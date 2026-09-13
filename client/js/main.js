@@ -60,6 +60,8 @@ const ui = new UI({
   onLowFx: (on) => applyLowFx(on),
   onSfx: (on) => sfx.setEnabled(on),
   onVolume: (v) => sfx.setVolume(v),
+  // The menu toggle drives the same state as the one in the Forge.
+  onCheat: (on) => builder.setCheat(on),
 });
 
 const builder = new Builder(

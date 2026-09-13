@@ -31,6 +31,21 @@ export class UI {
   setCheat(on, build) {
     this.cheat = on;
     if (build) this.updateBuildSummary(build);
+
+    // Keep both toggles (menu and Forge) showing the same state. Setting
+    // `checked` directly does not fire `change`, so this cannot loop.
+    for (const id of ['menuCheat', 'cheatToggle']) {
+      const cb = el(id);
+      if (!cb) continue;
+      cb.checked = on;
+      const label = cb.closest('label');
+      if (label) {
+        label.classList.toggle('on', on);
+        const state = label.querySelector('.cheatState');
+        if (state) state.textContent = on ? 'ON' : 'OFF';
+      }
+    }
+
     for (const n of el('modeRow').children) {
       const locked = on && n.dataset.mode !== 'sandbox';
       n.classList.toggle('locked', locked);
@@ -50,6 +65,9 @@ export class UI {
     const vol = el('volume');
     vol.value = String(Number(localStorage.getItem('turretforge.volume') || 0.7));
     vol.addEventListener('input', () => this.hooks.onVolume(Number(vol.value)));
+
+    const cheat = el('menuCheat');
+    cheat.addEventListener('change', () => this.hooks.onCheat(cheat.checked));
   }
 
   // -------------------------------------------------------------------- menu

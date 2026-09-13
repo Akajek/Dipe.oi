@@ -246,6 +246,29 @@ input:focus, select:focus { border-color: var(--accent); }
 #forge.cheating .forgeBar { border-bottom-color: rgba(191,127,245,.5); }
 #forge.cheating #forgeCanvas { border-color: rgba(191,127,245,.4); }
 
+/* The cheat toggle reads as a switch, not a stray checkbox -- people were
+   looking straight past the plain one. */
+.cheatTgl {
+  gap: 8px; padding: 7px 13px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; letter-spacing: .02em;
+  color: #d6a8ff; background: rgba(191,127,245,.10);
+  border: 1px solid rgba(191,127,245,.45);
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.cheatTgl:hover { background: rgba(191,127,245,.2); border-color: rgba(191,127,245,.8); color: #edd9ff; }
+.cheatTgl .cheatIcon { font-size: 13px; line-height: 1; }
+.cheatTgl .cheatState {
+  min-width: 30px; text-align: center; padding: 1px 6px; border-radius: 10px;
+  font-size: 10px; letter-spacing: .1em;
+  background: rgba(255,255,255,.1); color: var(--muted);
+}
+.cheatTgl.on {
+  background: linear-gradient(90deg, rgba(191,127,245,.3), rgba(255,122,224,.3));
+  border-color: #bf7ff5; color: #fff;
+  box-shadow: 0 0 0 3px rgba(191,127,245,.14);
+}
+.cheatTgl.on .cheatState { background: linear-gradient(90deg, #bf7ff5, #ff7ae0); color: #1a0b22; }
+
 .tgl { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .tgl input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 .tgl:hover { color: var(--text); }

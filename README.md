@@ -67,7 +67,8 @@ mid-game takes effect on your next respawn.
 
 ### Cheat mode
 
-The toggle in the Forge removes the points budget entirely and unlocks every slider: damage to 1000,
+The **Cheat mode** switch sits in two places: on the main menu under the settings row, and in the
+Forge's top bar next to Save & Close. It removes the points budget entirely and unlocks every slider: damage to 1000,
 penetration to 100000, up to 48 turrets. Cheat builds are accepted **in Sandbox only**, so the
 competitive modes stay honest -- flipping the switch moves you there automatically, and turning it
 off clamps your build back to legal values.

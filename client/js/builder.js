@@ -512,7 +512,6 @@ export class Builder {
     this.selected = clamp(this.selected, 0, Math.max(0, this.build.turrets.length - 1));
     el('buildName').value = this.build.name || 'Custom';
     el('bodyShape').value = this.build.body;
-    el('cheatToggle').checked = this.cheat;
     el('cheatBadge').classList.toggle('hidden', !this.cheat);
     el('forge').classList.toggle('cheating', this.cheat);
     this.renderTabs();

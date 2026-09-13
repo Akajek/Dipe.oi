@@ -71,6 +71,12 @@
       <label class="tgl" title="Fewer effects and a lower render resolution. Try this first if the game stutters."><input type="checkbox" id="lowFx" /> <span>Low graphics</span></label>
       <label class="tgl"><input type="checkbox" id="sfxToggle" checked /> <span>Sound</span></label>
       <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7" title="Volume" />
+      <label class="tgl cheatTgl" title="No points budget, every slider unlocked, up to 48 turrets. Sandbox only.">
+        <input type="checkbox" id="menuCheat" />
+        <span class="cheatIcon">&#9889;</span>
+        <span>Cheat mode</span>
+        <span class="cheatState">OFF</span>
+      </label>
     </div>
 
     <div class="menuButtons">
@@ -95,8 +101,11 @@
       <span id="budgetText">0 / 120</span>
     </div>
     <div class="forgeBarBtns">
-      <label class="tgl" title="Removes the points budget and unlocks every slider. Cheat builds only work in Sandbox.">
-        <input type="checkbox" id="cheatToggle" /> <span>Cheat mode</span>
+      <label class="tgl cheatTgl" title="Removes the points budget and unlocks every slider. Cheat builds only work in Sandbox.">
+        <input type="checkbox" id="cheatToggle" />
+        <span class="cheatIcon">&#9889;</span>
+        <span>Cheat mode</span>
+        <span class="cheatState">OFF</span>
       </label>
       <button id="forgeSave" class="primary">Save &amp; Close</button>
     </div>
