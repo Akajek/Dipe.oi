@@ -5,7 +5,9 @@
 // friendly fire, build-budget enforcement, drone accounting and tick cost.
 
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Room } from '../server/room.js';
+import { AssetServer } from '../server/assets.js';
 import {
   STARTER_BUILDS, validateBuild, defaultTurret, BUDGET, MAX_TURRETS,
   MAX_TURRETS_CHEAT, fieldRange,
@@ -292,6 +294,42 @@ section('idle clients');
   for (let i = 0; i < 60; i++) room.update();
   check('a frozen client coasts to a stop', Math.abs(c.tank.vx) < 0.5, 'vx=' + c.tank.vx.toFixed(2));
   check('a frozen client stops firing', !c.tank.shooting && !c.tank.autofire);
+}
+
+section('asset versioning');
+{
+  // The bug this guards: every module is cached under its own URL with its own
+  // expiry, so after a redeploy each visitor ends up with a private mixture of
+  // old and new files. Stamping the URLs makes a mixture impossible.
+  // fileURLToPath, not URL.pathname: the latter keeps percent-encoding, so a
+  // project path containing spaces silently resolves to nothing.
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const a = new AssetServer(root, 'testbuild');
+
+  const main = a.cache.get('/js/main.js');
+  check('entry module is served from the stamped cache', !!main);
+
+  const imports = (main.body.match(/from '[^']+'/g) || []).filter((l) => l.includes('./'));
+  const stamped = imports.filter((l) => l.includes('?v=testbuild'));
+  check('every relative import is stamped', imports.length > 0 && stamped.length === imports.length,
+    stamped.length + '/' + imports.length);
+
+  const html = a.cache.get('/index.html');
+  check('index.html references the stamped entry point', html.body.includes('js/main.js?v=testbuild'));
+  check('index.html references the stamped stylesheet', html.body.includes('css/style.css?v=testbuild'));
+
+  // Cross-module imports inside shared/ must be stamped too, or those files
+  // become the stale ones.
+  const shared = a.cache.get('/shared/builds.js');
+  const sharedImports = (shared.body.match(/from '\.\/[^']+'/g) || []);
+  check('shared modules stamp their own imports',
+    sharedImports.every((l) => l.includes('?v=testbuild')), sharedImports.join(' '));
+
+  // A different build id must produce different URLs, or a redeploy changes
+  // nothing for anyone already holding the old files.
+  const b = new AssetServer(root, 'otherbuild');
+  check('a new build id changes every module URL',
+    b.cache.get('/index.html').body.includes('js/main.js?v=otherbuild'));
 }
 
 section('browser portability');

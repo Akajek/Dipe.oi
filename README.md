@@ -211,17 +211,31 @@ the GPU is blocklisted) the sprite wins because it is a straight blit instead of
 gradient evaluation. Rather than guess, `calibrateGlow()` times both at startup and picks the
 winner. Measured, not assumed -- guessing wrong roughly triples the cost of every explosion.
 
-## Deploy gotcha: stale assets
+## Asset versioning
 
-Module URLs carry no content hash, so production serves them with
-`Cache-Control: no-cache` (revalidate, 304 when unchanged) rather than a long
-max-age. With a long TTL a redeploy can leave a browser holding **new HTML and
-stale JS** — the page renders controls whose event handlers do not exist in the
-cached bundle, so buttons appear and do nothing. That is much harder to
-diagnose than an outright error.
+The client is plain ES modules with no bundler, so **every file is fetched by
+its own URL and cached independently, with its own expiry**. Under a plain
+max-age that means a redeploy leaves each visitor holding a private mixture of
+old and new files — one person's `main.js` from today beside their
+`builder.js` from last week. The page then renders controls whose handlers do
+not exist in the cached bundle, so buttons appear and do nothing, *differently
+for each person*. It is a genuinely confusing failure, and no amount of
+"try refreshing" reliably clears it.
 
-The server's build id is shown in the menu footer and at `/api/version`, so
-"are you on the current deploy?" is answerable instead of guesswork.
+`server/assets.js` fixes it by stamping the build id into every module URL:
+
+| Response | Cache-Control | Why |
+| --- | --- | --- |
+| `index.html` | `no-cache` | Revalidated every load; it names the current build. Cheap — a 304 is a few bytes. |
+| `main.js?v=<build>` | `public, max-age=31536000, immutable` | A stamped URL can only ever mean one build, so it is safe to keep forever. |
+| unstamped or stale stamp | `no-store` | Never reuse something that might belong to another build. |
+
+Imports are rewritten at boot (`from './net.js'` → `from './net.js?v=abc1234'`),
+so one revalidation of the HTML pulls in a wholly consistent set. No hard
+refresh, no cache clearing, no per-player archaeology.
+
+The build id appears in the menu footer and at `/api/version`, so "are you on
+the current deploy?" is answerable rather than guesswork.
 
 ## Tuning
 

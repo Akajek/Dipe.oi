@@ -13,6 +13,7 @@ import { MS_PER_TICK, TICK_RATE, GAME_MODES, MAX_NAME_LEN, STAT_COUNT, WORLD_SIZ
 import { MSG, readInput } from '../shared/protocol.js';
 import { validateBuild, BUDGET, STARTER_BUILDS } from '../shared/builds.js';
 import { Room } from './room.js';
+import { AssetServer } from './assets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -72,6 +73,11 @@ app.get('/api/rooms', (_req, res) => {
 const STATIC_OPTS = process.env.NODE_ENV === 'production'
   ? { etag: true, maxAge: 0, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }
   : { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') };
+
+// Build-stamped modules first; everything else (favicon, images) falls
+// through to the plain static handler below.
+const assets = new AssetServer(ROOT, BUILD_ID);
+app.use(assets.middleware());
 
 app.use('/shared', express.static(path.join(ROOT, 'shared'), STATIC_OPTS));
 app.use(express.static(path.join(ROOT, 'client'), Object.assign({ index: 'index.html' }, STATIC_OPTS)));
