@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run simulation tests
+        run: npm test
+
+      - name: Boot check
+        # Make sure the server actually starts and serves the client.
+        run: |
+          npm start &
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000/healthz > /dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://localhost:3000/healthz
+          curl -sf -o /dev/null http://localhost:3000/
+          curl -sf -o /dev/null http://localhost:3000/js/main.js
+          curl -sf -o /dev/null http://localhost:3000/shared/builds.js

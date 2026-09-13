@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: turretforge
+    runtime: node
+    region: frankfurt
+    plan: starter
+    branch: main
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: TICK_RATE
+        value: "30"

@@ -1,0 +1,21 @@
+{
+  "name": "turretforge-io",
+  "version": "1.0.0",
+  "description": "Multiplayer diep.io-style arena shooter with a custom turret builder. FFA, TDM and Boss Fight modes.",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node tools/test.mjs",
+    "bots": "node tools/bots.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}

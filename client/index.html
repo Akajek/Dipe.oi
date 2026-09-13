@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>TurretForge.io — build your own tank</title>
+<meta name="description" content="A multiplayer arena shooter where you design your own turrets. FFA, Team Deathmatch and Boss Fight." />
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='%2300b2e1' stroke='%23225' stroke-width='3'/><rect x='16' y='12' width='15' height='8' fill='%23999' stroke='%23225' stroke-width='3'/></svg>" />
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- ------------------------------------------------------------- in-game HUD -->
+<div id="hud" class="hidden">
+  <div id="topLeft">
+    <div id="leaderboard">
+      <h3 id="lbTitle">Leaderboard</h3>
+      <ul id="lbList"></ul>
+    </div>
+  </div>
+
+  <div id="topRight">
+    <div id="netStat"><span id="pingVal">--</span> ms <span class="sep">|</span> <span id="fpsVal">--</span> fps</div>
+    <div id="modeBanner"></div>
+  </div>
+
+  <div id="bossBar" class="hidden">
+    <div class="bossName"><span id="bossLabel">BOSS</span><span id="bossTimer"></span></div>
+    <div class="bossTrack"><div id="bossFill"></div></div>
+  </div>
+
+  <div id="killfeed"></div>
+
+  <div id="bottomLeft">
+    <div id="upgrades"></div>
+    <div id="scoreBox">
+      <div class="bar level"><div id="xpFill"></div><span id="levelText">Lv 1</span></div>
+      <div class="bar score"><div id="scoreFill"></div><span id="scoreText">Score 0</span></div>
+      <div id="nameTag"></div>
+    </div>
+  </div>
+
+  <canvas id="minimap"></canvas>
+
+  <div id="chatWrap">
+    <div id="chatLog"></div>
+    <input id="chatInput" maxlength="80" placeholder="Press Enter to chat" class="hidden" />
+  </div>
+
+  <div id="hints">
+    <span><b>WASD</b> move</span><span><b>Mouse</b> aim</span><span><b>Click</b> fire</span>
+    <span><b>E</b> autofire</span><span><b>R</b> autospin</span><span><b>1-8</b> upgrade</span><span><b>Enter</b> chat</span>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------- menu -->
+<div id="menu">
+  <div class="menuInner">
+    <h1>Turret<span>Forge</span></h1>
+    <p class="tagline">Design your own turrets. Then go prove they work.</p>
+
+    <input id="nameInput" maxlength="16" placeholder="Your name" autocomplete="off" />
+
+    <div class="modeRow" id="modeRow"></div>
+
+    <div class="buildSummary" id="buildSummary"></div>
+
+    <div class="menuButtons">
+      <button id="playBtn" class="primary">Play</button>
+      <button id="forgeBtn">Open the Forge</button>
+    </div>
+
+    <div class="menuFoot">
+      <span id="serverInfo">connecting…</span>
+      <span class="sep">|</span>
+      <span id="menuPing">-- ms</span>
+    </div>
+  </div>
+</div>
+
+<!-- ----------------------------------------------------------------- forge -->
+<div id="forge" class="hidden">
+  <div class="forgeBar">
+    <h2>The Forge</h2>
+    <div class="budget">
+      <div class="budgetTrack"><div id="budgetFill"></div></div>
+      <span id="budgetText">0 / 120</span>
+    </div>
+    <div class="forgeBarBtns">
+      <button id="forgeSave" class="primary">Save &amp; Close</button>
+    </div>
+  </div>
+
+  <div class="forgeBody">
+    <aside class="forgeCol presets">
+      <h3>Presets</h3>
+      <div id="presetList"></div>
+      <h3>Saved</h3>
+      <div id="savedList"></div>
+      <button id="saveCurrent" class="ghost">Save this build</button>
+    </aside>
+
+    <section class="forgeCol preview">
+      <canvas id="forgeCanvas"></canvas>
+      <div class="previewFoot">
+        <label>Body
+          <select id="bodyShape"></select>
+        </label>
+        <label>Name
+          <input id="buildName" maxlength="20" />
+        </label>
+        <button id="testFire" class="ghost">Test fire</button>
+      </div>
+      <p class="hint">Click a turret in the preview to select it. Drag it to move.</p>
+    </section>
+
+    <aside class="forgeCol editor">
+      <div class="turretHead">
+        <h3>Turrets <span id="turretCount"></span></h3>
+        <button id="addTurret" class="ghost">+ Add</button>
+      </div>
+      <div id="turretTabs"></div>
+      <div id="turretProps"></div>
+      <button id="deleteTurret" class="danger">Delete turret</button>
+    </aside>
+  </div>
+</div>
+
+<!-- ----------------------------------------------------------------- death -->
+<div id="death" class="hidden">
+  <div class="deathInner">
+    <h2 id="deathTitle">You were destroyed</h2>
+    <p id="deathBy"></p>
+    <div class="deathStats">
+      <div><span id="dScore">0</span><label>Score</label></div>
+      <div><span id="dLevel">1</span><label>Level</label></div>
+      <div><span id="dKills">0</span><label>Kills</label></div>
+    </div>
+    <div class="menuButtons">
+      <button id="respawnBtn" class="primary">Respawn</button>
+      <button id="forgeBtn2">Edit turrets</button>
+      <button id="menuBtn">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
