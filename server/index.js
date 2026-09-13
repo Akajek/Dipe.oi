@@ -283,7 +283,13 @@ function loop() {
     accumulator -= MS_PER_TICK;
     steps++;
     const t0 = Date.now();
-    for (const room of rooms.values()) room.update();
+    for (const room of rooms.values()) {
+      // An empty room has nobody to simulate for. Freezing it matters on
+      // small instances, where ticking a few hundred idle shapes is a real
+      // slice of the CPU budget.
+      if (room.clients.size === 0) continue;
+      room.update();
+    }
     const cost = Date.now() - t0;
     if (cost > MS_PER_TICK) {
       if (++slowTicks % 30 === 0) {

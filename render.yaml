@@ -3,7 +3,9 @@ services:
     name: turretforge
     runtime: node
     region: frankfurt
-    plan: starter
+    # Free tier: spins down after ~15 min idle, so the first player back waits
+    # through a cold start. Change to `starter` once that becomes annoying.
+    plan: free
     branch: main
     buildCommand: npm ci --omit=dev
     startCommand: npm start

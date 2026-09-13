@@ -136,12 +136,15 @@ The repo ships a `render.yaml` blueprint pinned to the **Frankfurt** region.
    Render reads `render.yaml` and creates the web service — region, build and start commands included.
 3. Wait for the first deploy, then open the service URL.
 
-Doing it manually instead of via the blueprint:
+If the Blueprint route asks you to upgrade, skip it and create the service by hand instead
+(**New → Web Service → connect the repo**). The dashboard lets you pick the Free instance type
+directly, and `render.yaml` is then ignored:
 
 | Setting | Value |
 | --- | --- |
 | Type | Web Service |
 | Region | **Frankfurt** |
+| Instance type | **Free** |
 | Runtime | Node |
 | Build command | `npm ci --omit=dev` |
 | Start command | `npm start` |
@@ -149,9 +152,12 @@ Doing it manually instead of via the blueprint:
 
 Notes:
 
-- **Use a paid instance type** (`starter` or better, as set in `render.yaml`). Render's free tier
-  spins down when idle, and a game server that takes 30 seconds to wake up is not a game server.
-  To try it for free anyway, change `plan: starter` to `plan: free` in `render.yaml`.
+- `render.yaml` ships with **`plan: free`**, so the blueprint applies without a card on file.
+  The catch: free instances spin down after ~15 minutes of inactivity, so the first player back
+  waits through a cold start (roughly a minute), and they get a fraction of a CPU. That is fine
+  for testing and for a handful of friends. Change `plan: free` to `plan: starter` when the
+  cold starts start to hurt — it is a one-line edit and a redeploy.
+- Empty rooms are frozen rather than simulated, so an idle server costs almost nothing.
 - WebSockets work over the normal HTTPS port — the client derives `wss://` from `location.host`,
   so there is nothing to configure.
 - `PORT` is injected by Render and read automatically.
