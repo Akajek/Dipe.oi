@@ -9,6 +9,7 @@ import { Builder } from './builder.js';
 import { UI } from './ui.js';
 import { ENT, TICK_RATE, GAME_MODES, TANK_BASE_RADIUS } from '../../shared/constants.js';
 import { clamp, lerp } from '../../shared/math.js';
+import { validateBuild } from '../../shared/builds.js';
 
 const canvas = document.getElementById('game');
 
@@ -159,6 +160,14 @@ function handleMessage(msg) {
 // -------------------------------------------------------------- flow control
 
 function startGame(name, mode) {
+  // Catch an over-budget build here rather than letting the server bounce it
+  // and silently drop the player into a starter tank they did not choose.
+  const check = validateBuild(builder.build);
+  if (!check.ok) {
+    ui.toast('That build is over budget — trim it first', 'bad');
+    builder.show();
+    return;
+  }
   state.name = name || 'Anonymous';
   state.mode = mode;
   ui.setNameTag(state.name);

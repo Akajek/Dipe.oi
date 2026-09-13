@@ -6,8 +6,9 @@
 
 import { Room } from '../server/room.js';
 import { STARTER_BUILDS, validateBuild, defaultTurret, BUDGET, MAX_TURRETS } from '../shared/builds.js';
-import { KEY } from '../shared/protocol.js';
+import { KEY, EF, readSnapshot } from '../shared/protocol.js';
 import { ENT, TEAM } from '../shared/constants.js';
+import { Shape } from '../server/entities.js';
 
 let passed = 0;
 let failed = 0;
@@ -180,6 +181,47 @@ section('boss mode');
   check('killing the boss ends the round', room.roundState === 'waiting' && room.boss === null);
   const end = [...a.msgs, ...b.msgs].filter((m) => m.t === 'round' && m.state === 'end').pop();
   check('round end is announced', !!end, end ? end.message : 'no message');
+}
+
+section('snapshot flags');
+{
+  // Decode what a real client would receive and check per-viewer hostility.
+  const room = emptyRoom('ffa');
+  const me = fakeClient('Me', STARTER_BUILDS[0].build);
+  const foe = fakeClient('Foe', STARTER_BUILDS[0].build);
+  room.join(me); room.join(foe);
+  me.tank.x = 4000; me.tank.y = 4000;
+  foe.tank.x = 4150; foe.tank.y = 4000;
+  // Put a shape in view so we can confirm shapes are never flagged hostile.
+  room.add(Object.assign(new Shape(0, 4080, 4080), { faction: 0 }));
+
+  let decoded = null;
+  me.sendBinary = (buf) => { decoded = readSnapshot(buf); };
+  room.update();
+
+  check('snapshot reaches the client', !!decoded);
+  const selfEnt = decoded.ents.find((e) => e.id === me.tank.id);
+  const foeEnt = decoded.ents.find((e) => e.id === foe.tank.id);
+  check('own tank is flagged SELF', !!(selfEnt.flags & EF.SELF));
+  check('own tank is not flagged hostile', !(selfEnt.flags & EF.HOSTILE));
+  check('enemy tank is flagged hostile', !!(foeEnt.flags & EF.HOSTILE));
+  const shapeEnts = decoded.ents.filter((e) => e.type === ENT.SHAPE);
+  check('shapes are never flagged hostile', shapeEnts.every((e) => !(e.flags & EF.HOSTILE)), String(shapeEnts.length) + ' shapes');
+  check('selfId matches the viewer', decoded.selfId === me.tank.id);
+}
+
+section('idle clients');
+{
+  const room = emptyRoom('ffa');
+  const c = fakeClient('Idler', STARTER_BUILDS[0].build);
+  room.join(c);
+  c.tank.x = 4000; c.tank.y = 4000;
+  // Simulate a client that sent input and then froze (backgrounded tab).
+  c.lastInputAt = Date.now() - 5000;
+  c.tank.applyInput({ keys: KEY.RIGHT | KEY.SHOOT, aimAngle: 0, aimDist: 300 });
+  for (let i = 0; i < 60; i++) room.update();
+  check('a frozen client coasts to a stop', Math.abs(c.tank.vx) < 0.5, 'vx=' + c.tank.vx.toFixed(2));
+  check('a frozen client stops firing', !c.tank.shooting && !c.tank.autofire);
 }
 
 section('performance and bandwidth');

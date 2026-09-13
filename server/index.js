@@ -36,7 +36,9 @@ app.get('/api/rooms', (_req, res) => {
 // module is indistinguishable from a bug.
 const STATIC_OPTS = process.env.NODE_ENV === 'production'
   ? { maxAge: '1h', etag: true }
-  : { maxAge: 0, etag: false, cacheControl: false };
+  // Without an explicit no-store, browsers cache heuristically off
+  // Last-Modified and happily serve yesterday's module during development.
+  : { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') };
 
 app.use('/shared', express.static(path.join(ROOT, 'shared'), STATIC_OPTS));
 app.use(express.static(path.join(ROOT, 'client'), Object.assign({ index: 'index.html' }, STATIC_OPTS)));
@@ -93,6 +95,7 @@ class Client {
     this.alive = true;
     this.joined = false;
     this.lastInput = null;
+    this.lastInputAt = 0;
   }
 
   sendRaw(str) {
@@ -172,6 +175,7 @@ function handleBinary(client, data) {
     const inp = readInput(buf);
     if (!inp) return;
     client.lastInput = inp;
+    client.lastInputAt = Date.now();
     if (client.tank && !client.tank.dead) client.tank.applyInput(inp);
     return;
   }

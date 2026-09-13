@@ -109,6 +109,8 @@ input:focus, select:focus { border-color: var(--accent); }
   background: #10141a; border: 1px solid var(--line); border-radius: var(--radius);
   font-size: 13px; text-align: left;
 }
+.buildSummary.over { border-color: rgba(241,78,84,.55); background: rgba(241,78,84,.08); }
+.buildSummary.over .bCost { color: #ff9a9e; }
 .buildSummary .bName { font-weight: 700; }
 .buildSummary .bCost { color: var(--muted); }
 

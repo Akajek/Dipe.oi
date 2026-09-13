@@ -304,6 +304,7 @@ export class Room {
   update() {
     this.tick++;
     this.events.length = 0;
+    this.dropStaleInput();
 
     for (const e of this.entities.values()) {
       if (!e.dead) e.update(this);
@@ -328,6 +329,24 @@ export class Room {
     if (this.tick % 15 === 0) this.broadcastLeaderboard();
     if (this.tick % 6 === 0) this.sendSelfStats();
     this.sendSnapshots();
+  }
+
+  /**
+   * A backgrounded tab stops sending input (browsers freeze rAF), and without
+   * this the server would keep applying the last packet forever -- so a player
+   * who alt-tabs mid-sprint drives into a wall and keeps firing. Idle clients
+   * coast to a stop instead.
+   */
+  dropStaleInput() {
+    const now = Date.now();
+    for (const c of this.clients) {
+      if (!c.tank || c.tank.dead) continue;
+      if (c.lastInputAt && now - c.lastInputAt > 1000) {
+        c.tank.keys = 0;
+        c.tank.shooting = false;
+        c.tank.autofire = false;
+      }
+    }
   }
 
   // ------------------------------------------------------------------ death

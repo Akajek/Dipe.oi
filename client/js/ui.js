@@ -101,17 +101,22 @@ export class UI {
 
   updateBuildSummary(build) {
     const cost = buildCost(build);
+    const over = cost > BUDGET + 0.5;
     const box = el('buildSummary');
     box.innerHTML = '';
+    box.classList.toggle('over', over);
+
     const left = document.createElement('div');
     const nm = document.createElement('div');
     nm.className = 'bName';
     nm.textContent = build.name || 'Custom';
     const meta = document.createElement('div');
     meta.className = 'bCost';
-    meta.textContent = build.turrets.length + ' turret' + (build.turrets.length === 1 ? '' : 's')
-      + ' · ' + build.body + ' hull';
+    meta.textContent = over
+      ? 'Over budget — open the Forge to trim it'
+      : build.turrets.length + ' turret' + (build.turrets.length === 1 ? '' : 's') + ' · ' + build.body + ' hull';
     left.appendChild(nm); left.appendChild(meta);
+
     const right = document.createElement('div');
     right.className = 'bCost';
     right.textContent = cost.toFixed(0) + ' / ' + BUDGET + ' pts';
