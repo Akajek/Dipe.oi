@@ -19,6 +19,17 @@ const PREVIEW_SCALE = 2.2;
 
 const el = (id) => document.getElementById(id);
 
+/**
+ * Deep copy for build/turret objects.
+ *
+ * These are plain JSON data, so a round-trip is exact -- and unlike
+ * structuredClone it works on every browser a player might turn up with.
+ * structuredClone needs Chrome 98 / Firefox 94 / Safari 15.4, and when it is
+ * missing the Duplicate, Mirror and preset buttons throw and silently do
+ * nothing, which is indistinguishable from "the editor is broken".
+ */
+const clone = (obj) => JSON.parse(JSON.stringify(obj));
+
 export class Builder {
   constructor(onSave, opts = {}) {
     this.onSave = onSave;
@@ -47,7 +58,7 @@ export class Builder {
         if (v.build) return v.build;
       }
     } catch { /* corrupt or unavailable storage: fall through */ }
-    return structuredClone(STARTER_BUILDS[0].build);
+    return clone(STARTER_BUILDS[0].build);
   }
 
   saveCurrent() {
@@ -69,7 +80,7 @@ export class Builder {
   saveNamed() {
     const list = this.loadSaved();
     const name = (this.build.name || 'Custom').slice(0, 20);
-    const copy = structuredClone(this.build);
+    const copy = clone(this.build);
     copy.name = name;
     const at = list.findIndex((b) => b.name === name);
     if (at >= 0) list[at] = copy; else list.unshift(copy);
@@ -141,7 +152,7 @@ export class Builder {
 
     el('dupTurret').addEventListener('click', () => {
       const t = this.build.turrets[this.selected];
-      if (t) this.addTurret(structuredClone(t));
+      if (t) this.addTurret(clone(t));
     });
 
     el('mirrorTurret').addEventListener('click', () => {
@@ -149,7 +160,7 @@ export class Builder {
       if (!t) return;
       // Reflect across the tank's forward axis: negate the angle and the
       // sideways offset, leaving everything else alone.
-      const m = structuredClone(t);
+      const m = clone(t);
       m.angle = -t.angle;
       m.offset = -t.offset;
       if (m.angle === t.angle && m.offset === t.offset) {
@@ -284,7 +295,7 @@ export class Builder {
       d.querySelector('small').textContent = p.desc;
       d.title = p.desc;
       d.addEventListener('click', () => {
-        this.build = structuredClone(p.build);
+        this.build = clone(p.build);
         this.selected = 0;
         this.refresh();
       });

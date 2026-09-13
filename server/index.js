@@ -2,7 +2,9 @@
 // drives every room's fixed-step simulation.
 
 import http from 'node:http';
+import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
@@ -15,9 +17,37 @@ import { Room } from './room.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = process.env.PORT || 3000;
+const START_TIME = new Date().toISOString();
+
+/**
+ * Short fingerprint of the code actually being served. Lets a player read
+ * their build off the menu and say whether they are on the current deploy --
+ * the question that is otherwise guesswork over chat.
+ */
+const BUILD_ID = (() => {
+  try {
+    const h = createHash('sha1');
+    for (const dir of ['client/js', 'client/css', 'client', 'shared']) {
+      const full = path.join(ROOT, dir);
+      for (const f of fs.readdirSync(full).sort()) {
+        const fp = path.join(full, f);
+        const st = fs.statSync(fp);
+        if (st.isFile()) h.update(f + st.size + st.mtimeMs);
+      }
+    }
+    return h.digest('hex').slice(0, 7);
+  } catch {
+    return 'dev';
+  }
+})();
 
 const app = express();
 app.disable('x-powered-by');
+
+app.get('/api/version', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ build: BUILD_ID, node: process.version, started: START_TIME });
+});
 
 // Render's health check. Cheap and dependency-free.
 app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, uptime: process.uptime() }));
@@ -34,10 +64,13 @@ app.get('/api/rooms', (_req, res) => {
 
 // Cache aggressively in production; never in development, where a stale
 // module is indistinguishable from a bug.
+// Asset URLs carry no content hash, so a long max-age means a redeploy can
+// leave a browser holding new HTML and stale JS -- the UI renders controls
+// whose event handlers do not exist yet. `no-cache` still caches; it just
+// forces a revalidation, which answers 304 in a few bytes when nothing moved.
+// For a few hundred KB of source that is the right trade for always-correct.
 const STATIC_OPTS = process.env.NODE_ENV === 'production'
-  ? { maxAge: '1h', etag: true }
-  // Without an explicit no-store, browsers cache heuristically off
-  // Last-Modified and happily serve yesterday's module during development.
+  ? { etag: true, maxAge: 0, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }
   : { etag: false, lastModified: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') };
 
 app.use('/shared', express.static(path.join(ROOT, 'shared'), STATIC_OPTS));
@@ -143,6 +176,7 @@ wss.on('connection', (ws) => {
     tickRate: TICK_RATE,
     world: WORLD_SIZE,
     region: process.env.RENDER_REGION || 'local',
+    build: BUILD_ID,
     modes: Object.values(GAME_MODES),
   });
 

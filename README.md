@@ -211,6 +211,18 @@ the GPU is blocklisted) the sprite wins because it is a straight blit instead of
 gradient evaluation. Rather than guess, `calibrateGlow()` times both at startup and picks the
 winner. Measured, not assumed -- guessing wrong roughly triples the cost of every explosion.
 
+## Deploy gotcha: stale assets
+
+Module URLs carry no content hash, so production serves them with
+`Cache-Control: no-cache` (revalidate, 304 when unchanged) rather than a long
+max-age. With a long TTL a redeploy can leave a browser holding **new HTML and
+stale JS** — the page renders controls whose event handlers do not exist in the
+cached bundle, so buttons appear and do nothing. That is much harder to
+diagnose than an outright error.
+
+The server's build id is shown in the menu footer and at `/api/version`, so
+"are you on the current deploy?" is answerable instead of guesswork.
+
 ## Tuning
 
 Most balance lives in two files:

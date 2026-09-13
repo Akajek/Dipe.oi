@@ -115,7 +115,12 @@ const net = new Net({
 function handleMessage(msg) {
   switch (msg.t) {
     case 'welcome':
-      ui.setServerInfo('server: ' + (msg.region || 'local') + ' · tick ' + msg.tickRate + 'Hz');
+      // Show the server's build id next to the region. If a player reports a
+      // bug, this is how we tell whether they are on the current deploy or a
+      // cached copy of an older one.
+      ui.setServerInfo('server: ' + (msg.region || 'local')
+        + ' · tick ' + msg.tickRate + 'Hz'
+        + (msg.build ? ' · build ' + msg.build : ''));
       break;
 
     case 'joined':

@@ -383,17 +383,30 @@ export class Renderer {
     }
   }
 
+  /**
+   * Rounded rectangle with a square-corner fallback.
+   *
+   * ctx.roundRect only arrived in Firefox 116 and Safari 16. This runs for
+   * every damaged entity on every frame, so on an older browser the missing
+   * method throws inside the draw loop and takes the whole frame with it --
+   * the game looks broken rather than slightly less rounded.
+   */
+  roundedRect(x, y, w, h, r) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r);
+    else ctx.rect(x, y, w, h);
+  }
+
   healthBar(x, y, halfW, ratio, color) {
     const ctx = this.ctx;
     const w = halfW * 2, h = 6;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
-    ctx.beginPath();
-    ctx.roundRect(x - halfW - 2, y - h / 2 - 2, w + 4, h + 4, 5);
+    this.roundedRect(x - halfW - 2, y - h / 2 - 2, w + 4, h + 4, 5);
     ctx.fill();
     ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(x - halfW, y - h / 2, Math.max(2, w * clamp(ratio, 0, 1)), h, 3);
+    this.roundedRect(x - halfW, y - h / 2, Math.max(2, w * clamp(ratio, 0, 1)), h, 3);
     ctx.fill();
     ctx.restore();
   }

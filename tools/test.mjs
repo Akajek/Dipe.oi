@@ -4,6 +4,7 @@
 // These cover the invariants that are expensive to notice by playing:
 // friendly fire, build-budget enforcement, drone accounting and tick cost.
 
+import fs from 'node:fs';
 import { Room } from '../server/room.js';
 import {
   STARTER_BUILDS, validateBuild, defaultTurret, BUDGET, MAX_TURRETS,
@@ -291,6 +292,36 @@ section('idle clients');
   for (let i = 0; i < 60; i++) room.update();
   check('a frozen client coasts to a stop', Math.abs(c.tank.vx) < 0.5, 'vx=' + c.tank.vx.toFixed(2));
   check('a frozen client stops firing', !c.tank.shooting && !c.tank.autofire);
+}
+
+section('browser portability');
+{
+  // These guard a specific failure: code that runs fine in a current Chromium
+  // but throws on a slightly older browser, where the symptom is a control
+  // that silently does nothing rather than an obvious error.
+  const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+  const clientFiles = fs.readdirSync(new URL('../client/js', import.meta.url))
+    .filter((f) => f.endsWith('.js'));
+
+  let usesStructuredClone = [];
+  let bareRoundRect = [];
+  for (const f of clientFiles) {
+    const src = read('client/js/' + f);
+    if (/structuredClone\s*\(/.test(src)) usesStructuredClone.push(f);
+    // ctx.roundRect is fine behind a capability check, not as a bare call.
+    const calls = (src.match(/\.roundRect\s*\(/g) || []).length;
+    const guards = (src.match(/typeof\s+\w+\.roundRect/g) || []).length;
+    if (calls > guards) bareRoundRect.push(f);
+  }
+
+  check('no client file calls structuredClone', usesStructuredClone.length === 0, usesStructuredClone.join(', '));
+  check('roundRect is only called behind a guard', bareRoundRect.length === 0, bareRoundRect.join(', '));
+
+  // Stale assets after a redeploy are what made cheat mode look broken:
+  // new HTML, cached JS, handlers missing.
+  const server = read('server/index.js');
+  check('production assets revalidate rather than sitting in cache',
+    /no-cache/.test(server) && !/maxAge:\s*'1h'/.test(server));
 }
 
 section('performance and bandwidth');
