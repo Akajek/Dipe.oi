@@ -124,6 +124,8 @@ export class Room {
     const p = this.spawnPoint(team);
     const tank = new Tank(p.x, p.y, team, client.name, client.build);
     tank.client = client;
+    // Sandbox behaves like FFA: everyone is their own faction, so you can
+    // actually test a build against something that shoots back.
     tank.faction = this.mode === 'tdm' ? FACTION_TDM + team
       : this.mode === 'boss' ? FACTION_BOSS_PLAYERS
       : tank.id;

@@ -4,8 +4,9 @@ A multiplayer arena shooter in the diep.io vein, with one difference: **you desi
 Barrel angle, length, width, reload, spread, projectile type — all of it is yours to tune, priced
 against a fixed points budget so a custom build is a set of trade-offs rather than a wish list.
 
-Three modes: **Free For All**, **Team Deathmatch**, and **Boss Fight** (one player becomes a giant boss
-everyone else has to bring down before the timer runs out).
+Four modes: **Free For All**, **Team Deathmatch**, **Boss Fight** (one player becomes a giant boss
+everyone else has to bring down before the timer runs out), and **Sandbox**, where cheat builds are
+allowed.
 
 ---
 
@@ -59,8 +60,22 @@ Each turret is priced by a cost model dominated by sustained DPS, so "fast, huge
 is unaffordable. Spread and self-recoil are *discounts* — accepting a drawback buys you damage.
 You get **120 points** and up to **10 turrets**.
 
-Seven presets ship as starting points (Basic, Twin, Sniper, Scatter, Swarm, Fortress, Spinner).
-Builds are saved to `localStorage`; changing your build mid-game takes effect on your next respawn.
+Every property has both a slider (for sweeping) and a number box (for exact values). **Duplicate**
+copies a turret, **Mirror** reflects one across the centre line -- symmetric builds take two clicks.
+Twelve presets ship as starting points; builds are saved to `localStorage`, and changing your build
+mid-game takes effect on your next respawn.
+
+### Cheat mode
+
+The toggle in the Forge removes the points budget entirely and unlocks every slider: damage to 1000,
+penetration to 100000, up to 48 turrets. Cheat builds are accepted **in Sandbox only**, so the
+competitive modes stay honest -- flipping the switch moves you there automatically, and turning it
+off clamps your build back to legal values.
+
+The caps that remain are the ones that keep the server alive rather than the ones that keep the game
+fair: a per-tank live-projectile budget and a room-wide entity cap mean a 48-barrel build firing
+1152 shots per volley is merely ridiculous instead of fatal. Non-finite values are rejected
+everywhere, because a NaN position produces an entity that can never be drawn, hit or removed.
 
 > The client and the server price builds with **the same module** (`shared/builds.js`), and the server
 > re-validates every build on arrival. A build that fails validation is replaced with the starter
@@ -86,6 +101,8 @@ client/
   js/renderer.js Canvas2D world rendering
   js/vfx.js      particle system
   js/builder.js  the Forge
+  js/sfx.js      procedural WebAudio sound effects
+  js/sprites.js  pre-rendered sprites + the glow-path calibration
   js/input.js    input capture + client-side prediction
   js/ui.js       HUD, menu, leaderboard, chat
 tools/
@@ -118,6 +135,13 @@ shatter debris, shockwaves, screen shake and level-up rings are therefore identi
 watching, and events are culled to what each player can actually see.
 
 Particle density scales itself down automatically if a client's frame rate drops.
+
+### Sound
+
+Effects are synthesised at runtime from oscillators and a shared noise buffer -- no audio files to
+download or keep in sync. Sound is driven by the same event stream as the particles, attenuated by
+distance and throttled per event type so a dozen players on autofire cannot turn into white noise.
+Barrel width sets the pitch of a shot, so a cannon sounds heavier than a pea shooter.
 
 ### Authority
 
@@ -171,6 +195,20 @@ feels immediate and one at 150 ms feels like they are fighting through syrup. Fr
 of Europe under ~40 ms. The in-game HUD shows live ping in the top-right corner.
 
 ---
+
+## Performance
+
+If the game stutters, turn on **Low graphics** in the menu. It drops render resolution to 0.75x,
+cuts the live particle ceiling from 1400 to 260, and skips the fill-rate-heavy effects (bullet
+trails, the full-screen vignette, soft glows). There is also an automatic tier: particle density
+thins out below 40 fps, and render resolution drops below 28 fps.
+
+One decision worth knowing about. Soft glows can be drawn as a radial gradient or as a pre-rendered
+sprite, and **which one is faster depends entirely on the machine**: with GPU-accelerated canvas the
+gradient wins by about 2.5x, while under software rendering (common on Linux, or any machine where
+the GPU is blocklisted) the sprite wins because it is a straight blit instead of a per-pixel
+gradient evaluation. Rather than guess, `calibrateGlow()` times both at startup and picks the
+winner. Measured, not assumed -- guessing wrong roughly triples the cost of every explosion.
 
 ## Tuning
 

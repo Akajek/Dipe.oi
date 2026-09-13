@@ -5,21 +5,26 @@
 
 import {
   FIELDS, BODY_SHAPES, TURRET_SHAPES, TURRET_TYPES, STARTER_BUILDS,
-  defaultTurret, turretCost, buildCost, validateBuild, BUDGET, MAX_TURRETS,
+  defaultTurret, turretCost, buildCost, validateBuild, fieldRange,
+  BUDGET, MAX_TURRETS, MAX_TURRETS_CHEAT,
 } from '../../shared/builds.js';
 import { TAU, clamp } from '../../shared/math.js';
 import { TANK_BASE_RADIUS } from '../../shared/constants.js';
 
 const STORE_KEY = 'turretforge.builds.v1';
 const CURRENT_KEY = 'turretforge.current.v1';
+const CHEAT_KEY = 'turretforge.cheat.v1';
 const BODY_SIDES = { circle: 0, triangle: 3, square: 4, pentagon: 5, hexagon: 6 };
 const PREVIEW_SCALE = 2.2;
 
 const el = (id) => document.getElementById(id);
 
 export class Builder {
-  constructor(onSave) {
+  constructor(onSave, opts = {}) {
     this.onSave = onSave;
+    this.sfx = opts.sfx || null;
+    this.onCheatChange = opts.onCheatChange || (() => {});
+    this.cheat = localStorage.getItem(CHEAT_KEY) === '1';
     this.build = this.loadCurrent();
     this.selected = 0;
     this.open = false;
@@ -38,7 +43,7 @@ export class Builder {
     try {
       const raw = localStorage.getItem(CURRENT_KEY);
       if (raw) {
-        const v = validateBuild(JSON.parse(raw));
+        const v = validateBuild(JSON.parse(raw), { cheat: this.cheat });
         if (v.build) return v.build;
       }
     } catch { /* corrupt or unavailable storage: fall through */ }
@@ -70,6 +75,27 @@ export class Builder {
     if (at >= 0) list[at] = copy; else list.unshift(copy);
     this.writeSaved(list);
     this.renderSaved();
+  }
+
+  /** Turret cap for the current mode. */
+  maxTurrets() {
+    return this.cheat ? MAX_TURRETS_CHEAT : MAX_TURRETS;
+  }
+
+  setCheat(on) {
+    this.cheat = on;
+    localStorage.setItem(CHEAT_KEY, on ? '1' : '0');
+    if (!on) {
+      // Coming back to fair play: clamp the build to legal ranges rather than
+      // leaving values the server would bounce.
+      const before = JSON.stringify(this.build);
+      this.build = validateBuild(this.build, { cheat: false }).build;
+      if (JSON.stringify(this.build) !== before) {
+        this.toast('Build clamped back to legal limits', true);
+      }
+    }
+    this.onCheatChange(on);
+    this.refresh();
   }
 
   // ----------------------------------------------------------------- open UI
@@ -104,25 +130,49 @@ export class Builder {
 
   bindUI() {
     el('forgeSave').addEventListener('click', () => {
-      const v = validateBuild(this.build);
-      if (!v.ok) { this.toast(v.reason, true); return; }
+      const v = validateBuild(this.build, { cheat: this.cheat });
+      if (!v.ok) { this.toast(v.reason, true); if (this.sfx) this.sfx.ui('error'); return; }
       this.saveCurrent();
       this.onSave(this.build);
       this.hide();
     });
 
-    el('addTurret').addEventListener('click', () => {
-      if (this.build.turrets.length >= MAX_TURRETS) { this.toast('Turret limit reached', true); return; }
-      this.build.turrets.push(defaultTurret());
-      this.selected = this.build.turrets.length - 1;
-      this.refresh();
+    el('addTurret').addEventListener('click', () => this.addTurret(defaultTurret()));
+
+    el('dupTurret').addEventListener('click', () => {
+      const t = this.build.turrets[this.selected];
+      if (t) this.addTurret(structuredClone(t));
+    });
+
+    el('mirrorTurret').addEventListener('click', () => {
+      const t = this.build.turrets[this.selected];
+      if (!t) return;
+      // Reflect across the tank's forward axis: negate the angle and the
+      // sideways offset, leaving everything else alone.
+      const m = structuredClone(t);
+      m.angle = -t.angle;
+      m.offset = -t.offset;
+      if (m.angle === t.angle && m.offset === t.offset) {
+        this.toast('That turret is already on the centre line', true);
+        return;
+      }
+      this.addTurret(m);
     });
 
     el('deleteTurret').addEventListener('click', () => {
       if (this.build.turrets.length <= 1) { this.toast('A tank needs at least one turret', true); return; }
       this.build.turrets.splice(this.selected, 1);
       this.selected = Math.max(0, this.selected - 1);
+      if (this.sfx) this.sfx.ui('click');
       this.refresh();
+    });
+
+    el('cheatToggle').addEventListener('change', (e) => {
+      this.setCheat(e.target.checked);
+      if (this.sfx) this.sfx.ui(e.target.checked ? 'ok' : 'click');
+      this.toast(e.target.checked
+        ? 'Cheat mode on — unlimited build, Sandbox mode only'
+        : 'Cheat mode off');
     });
 
     el('saveCurrent').addEventListener('click', () => {
@@ -138,7 +188,10 @@ export class Builder {
       this.build.body = e.target.value;
     });
 
-    el('testFire').addEventListener('click', () => this.testFire());
+    el('testFire').addEventListener('click', () => {
+      this.testFire();
+      if (this.sfx) this.sfx.ui('click');
+    });
 
     // Preview interaction: click selects a turret, drag swings it around.
     this.canvas.addEventListener('pointerdown', (e) => {
@@ -169,6 +222,20 @@ export class Builder {
     this.canvas.addEventListener('pointercancel', endDrag);
 
     window.addEventListener('resize', () => { if (this.open) this.resize(); });
+  }
+
+  /** Append a turret, respecting the current cap, and select it. */
+  addTurret(turret) {
+    const cap = this.maxTurrets();
+    if (this.build.turrets.length >= cap) {
+      this.toast('Turret limit reached (' + cap + ')' + (this.cheat ? '' : ' — try cheat mode'), true);
+      if (this.sfx) this.sfx.ui('error');
+      return;
+    }
+    this.build.turrets.push(turret);
+    this.selected = this.build.turrets.length - 1;
+    if (this.sfx) this.sfx.ui('click');
+    this.refresh();
   }
 
   /** Pointer position in hull-local pixels (origin at the tank centre). */
@@ -213,8 +280,9 @@ export class Builder {
       const d = document.createElement('div');
       d.className = 'presetItem';
       d.innerHTML = '<b></b><small></small>';
-      d.querySelector('b').textContent = p.label + '  (' + Math.round(buildCost(p.build)) + 'pts)';
+      d.querySelector('b').textContent = p.label + ' (' + Math.round(buildCost(p.build)) + 'p)';
       d.querySelector('small').textContent = p.desc;
+      d.title = p.desc;
       d.addEventListener('click', () => {
         this.build = structuredClone(p.build);
         this.selected = 0;
@@ -255,7 +323,7 @@ export class Builder {
       meta.textContent = (b.turrets ? b.turrets.length : 0) + ' turrets, ' + Math.round(buildCost(b)) + 'pts';
       d.appendChild(del); d.appendChild(name); d.appendChild(meta);
       d.addEventListener('click', () => {
-        const v = validateBuild(b);
+        const v = validateBuild(b, { cheat: this.cheat });
         this.build = v.build;
         this.selected = 0;
         this.refresh();
@@ -287,7 +355,7 @@ export class Builder {
       d.addEventListener('click', () => { this.selected = i; this.refresh(); });
       box.appendChild(d);
     });
-    el('turretCount').textContent = this.build.turrets.length + '/' + MAX_TURRETS;
+    el('turretCount').textContent = this.build.turrets.length + '/' + this.maxTurrets();
   }
 
   renderProps() {
@@ -299,7 +367,7 @@ export class Builder {
     box.appendChild(this.segmented('Type', TURRET_TYPES, t.type, (v) => {
       t.type = v;
       // Drone barrels cap their swarm size; re-clamp so the UI cannot lie.
-      if (v === 'drone') t.count = clamp(Math.round(t.count), 1, 4);
+      if (v === 'drone') t.count = clamp(Math.round(t.count), 1, this.cheat ? 12 : 4);
       this.refresh();
     }));
     box.appendChild(this.segmented('Barrel shape', TURRET_SHAPES, t.shape, (v) => {
@@ -309,9 +377,11 @@ export class Builder {
 
     const order = ['angle', 'offset', 'forward', 'length', 'width', 'damage', 'reload', 'speed', 'count', 'spread', 'size', 'pen', 'life', 'recoil'];
     for (const key of order) {
-      const f = FIELDS[key];
+      const f = fieldRange(key, this.cheat);
       if (!f) continue;
-      const max = key === 'count' && t.type === 'drone' ? 4 : f.max;
+      // Drone barrels cap `count` separately: it means "max alive", not
+      // "shots per volley".
+      const max = key === 'count' && t.type === 'drone' ? (this.cheat ? 12 : 4) : f.max;
       box.appendChild(this.slider(key, f, max, t));
     }
   }
@@ -339,6 +409,11 @@ export class Builder {
     return wrap;
   }
 
+  /**
+   * One editable property: a slider for sweeping and a number box for exact
+   * values. The two stay in sync, and the number box accepts anything inside
+   * the current range -- which cheat mode widens enormously.
+   */
   slider(key, f, max, turret) {
     const wrap = document.createElement('div');
     wrap.className = 'prop';
@@ -347,42 +422,86 @@ export class Builder {
     row.className = 'row';
     const name = document.createElement('b');
     name.textContent = f.label;
-    const val = document.createElement('i');
-    const fmt = (v) => (f.step < 1 ? v.toFixed(2) : String(Math.round(v)));
-    val.textContent = fmt(turret[key]);
-    row.appendChild(name); row.appendChild(val);
 
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = String(f.min);
-    input.max = String(max);
-    input.step = String(f.step);
-    input.value = String(turret[key]);
-    input.addEventListener('input', () => {
-      turret[key] = Number(input.value);
-      val.textContent = fmt(turret[key]);
-      // Live-update cost and preview without rebuilding the whole panel,
-      // so dragging a slider stays smooth.
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.className = 'propNum';
+    num.min = String(f.min);
+    num.max = String(max);
+    num.step = String(f.step);
+
+    row.appendChild(name);
+    row.appendChild(num);
+
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = String(f.min);
+    range.max = String(max);
+    range.step = String(f.step);
+
+    const decimals = f.step < 1 ? (String(f.step).split('.')[1] || '').length : 0;
+    const fmt = (v) => (decimals ? v.toFixed(decimals) : String(Math.round(v)));
+
+    const sync = (v, updateNum, updateRange) => {
+      turret[key] = v;
+      if (updateNum) num.value = fmt(v);
+      if (updateRange) range.value = String(v);
+      // Update cost and tabs only -- rebuilding the whole panel mid-drag would
+      // steal focus from the control being used.
       this.updateBudget();
       this.renderTabs();
+    };
+
+    range.addEventListener('input', () => sync(Number(range.value), true, false));
+
+    num.addEventListener('input', () => {
+      const v = Number(num.value);
+      if (!Number.isFinite(v)) return;          // mid-typing ("-", "1.") — wait
+      sync(clamp(v, f.min, max), false, true);
     });
+    // Normalise formatting once the field loses focus or Enter is pressed, so
+    // a half-typed or out-of-range value cannot linger in the box.
+    const commit = () => {
+      const v = Number(num.value);
+      sync(Number.isFinite(v) ? clamp(v, f.min, max) : turret[key], true, true);
+    };
+    num.addEventListener('blur', commit);
+    num.addEventListener('keydown', (e) => {
+      e.stopPropagation();                       // never let WASD reach the game
+      if (e.key === 'Enter') { commit(); num.blur(); }
+    });
+
+    sync(clamp(turret[key], f.min, max), true, true);
 
     const help = document.createElement('small');
     help.textContent = f.help;
 
     wrap.appendChild(row);
-    wrap.appendChild(input);
+    wrap.appendChild(range);
     wrap.appendChild(help);
     return wrap;
   }
 
   updateBudget() {
     const cost = buildCost(this.build);
-    const pct = Math.min(100, (cost / BUDGET) * 100);
     const fill = el('budgetFill');
     const text = el('budgetText');
-    fill.style.width = pct + '%';
+
+    if (this.cheat) {
+      // No budget to show, so the bar just reports what the build would have
+      // cost if it had to play fair.
+      fill.style.width = '100%';
+      fill.classList.remove('over');
+      fill.classList.add('cheat');
+      text.classList.remove('over');
+      text.textContent = cost.toFixed(0) + ' pts · unlimited';
+      el('forgeSave').disabled = false;
+      return;
+    }
+
+    fill.classList.remove('cheat');
     const over = cost > BUDGET + 0.5;
+    fill.style.width = Math.min(100, (cost / BUDGET) * 100) + '%';
     fill.classList.toggle('over', over);
     text.classList.toggle('over', over);
     text.textContent = cost.toFixed(1) + ' / ' + BUDGET + (over ? ' — over!' : '');
@@ -393,6 +512,9 @@ export class Builder {
     this.selected = clamp(this.selected, 0, Math.max(0, this.build.turrets.length - 1));
     el('buildName').value = this.build.name || 'Custom';
     el('bodyShape').value = this.build.body;
+    el('cheatToggle').checked = this.cheat;
+    el('cheatBadge').classList.toggle('hidden', !this.cheat);
+    el('forge').classList.toggle('cheating', this.cheat);
     this.renderTabs();
     this.renderProps();
     this.updateBudget();

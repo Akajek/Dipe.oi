@@ -7,6 +7,7 @@ import { Input } from './input.js';
 import { Minimap } from './minimap.js';
 import { Builder } from './builder.js';
 import { UI } from './ui.js';
+import { Sfx } from './sfx.js';
 import { ENT, TICK_RATE, GAME_MODES, TANK_BASE_RADIUS } from '../../shared/constants.js';
 import { clamp, lerp } from '../../shared/math.js';
 import { validateBuild } from '../../shared/builds.js';
@@ -31,6 +32,22 @@ const state = {
 const vfx = new VFX();
 const renderer = new Renderer(canvas, vfx);
 const minimap = new Minimap(document.getElementById('minimap'));
+const sfx = new Sfx();
+
+// Browsers only allow audio to start from a user gesture.
+window.addEventListener('pointerdown', () => sfx.unlock(), { once: false });
+window.addEventListener('keydown', () => sfx.unlock(), { once: true });
+
+/** Low-graphics mode: fewer particles, lower render resolution, no trails. */
+let lowFx = localStorage.getItem('turretforge.lowfx') === '1';
+function applyLowFx(on) {
+  lowFx = on;
+  localStorage.setItem('turretforge.lowfx', on ? '1' : '0');
+  renderer.lowFx = on;
+  renderer.setDprScale(on ? 0.75 : 1);
+  vfx.quality = on ? 0.3 : 1;
+  vfx.maxAlive = on ? 260 : 1400;
+}
 
 const ui = new UI({
   onPlay: (name, mode) => startGame(name, mode),
@@ -40,16 +57,30 @@ const ui = new UI({
   onChat: (msg) => net.sendJSON({ t: 'chat', msg }),
   onUpgrade: (i) => net.sendJSON({ t: 'upgrade', stat: i }),
   onChatState: (open) => { input.chatting = open; },
+  onLowFx: (on) => applyLowFx(on),
+  onSfx: (on) => sfx.setEnabled(on),
+  onVolume: (v) => sfx.setVolume(v),
 });
 
-const builder = new Builder((build) => {
-  ui.updateBuildSummary(build);
-  if (state.playing) {
-    // Applies on the next respawn; the server keeps the live tank as-is.
-    net.sendJSON({ t: 'setBuild', build });
-    ui.toast('Build saved — it takes effect on your next respawn', 'good');
+const builder = new Builder(
+  (build) => {
+    ui.updateBuildSummary(build);
+    if (state.playing) {
+      // Applies on the next respawn; the server keeps the live tank as-is.
+      net.sendJSON({ t: 'setBuild', build });
+      ui.toast('Build saved — it takes effect on your next respawn', 'good');
+    }
+  },
+  {
+    sfx,
+    // Cheat builds are only accepted in Sandbox, so flipping the switch moves
+    // you there rather than letting you queue for a game that will reject it.
+    onCheatChange: (on) => {
+      if (on) ui.setMode('sandbox');
+      ui.setCheat(on, builder.build);
+    },
   }
-});
+);
 
 const input = new Input(canvas, {
   onToggle: (label, on) => ui.toast(label + (on ? ' ON' : ' OFF')),
@@ -72,7 +103,10 @@ const net = new Net({
   onMessage: (msg) => handleMessage(msg),
   onEvents: (events) => {
     const ctx = { selfX: input.px, selfY: input.py };
-    for (const ev of events) vfx.handle(ev, ctx);
+    for (const ev of events) {
+      vfx.handle(ev, ctx);
+      sfx.handle(ev, input.px, input.py);
+    }
   },
 });
 
@@ -160,9 +194,15 @@ function handleMessage(msg) {
 // -------------------------------------------------------------- flow control
 
 function startGame(name, mode) {
-  // Catch an over-budget build here rather than letting the server bounce it
-  // and silently drop the player into a starter tank they did not choose.
-  const check = validateBuild(builder.build);
+  // A cheat build is only legal in Sandbox, so send it there instead of
+  // letting the server bounce it and hand back a starter tank.
+  if (builder.cheat && mode !== 'sandbox') {
+    ui.setMode('sandbox');
+    ui.toast('Cheat builds only run in Sandbox — switched for you', 'bad');
+    return;
+  }
+  // Catch an over-budget build here rather than letting the server bounce it.
+  const check = validateBuild(builder.build, { cheat: builder.cheat });
   if (!check.ok) {
     ui.toast('That build is over budget — trim it first', 'bad');
     builder.show();
@@ -225,12 +265,19 @@ function frame(now) {
     ui.setMenuPing(net.ping);
   }
 
-  // Ease particle counts down on weak hardware rather than dropping frames.
+  // Ease quality down on weak hardware rather than dropping frames. Particle
+  // density goes first because it is the cheapest thing to lose; render
+  // resolution only drops once thinning the particles has not been enough.
   qualityTimer += dt;
-  if (qualityTimer > 2) {
+  if (qualityTimer > 2 && !lowFx) {
     qualityTimer = 0;
-    if (fps && fps < 40) vfx.quality = Math.max(0.35, vfx.quality - 0.15);
-    else if (fps > 55) vfx.quality = Math.min(1, vfx.quality + 0.1);
+    if (fps && fps < 40) {
+      vfx.quality = Math.max(0.3, vfx.quality - 0.15);
+      if (fps < 28 && vfx.quality <= 0.35) renderer.setDprScale(0.75);
+    } else if (fps > 55) {
+      vfx.quality = Math.min(1, vfx.quality + 0.1);
+      if (vfx.quality >= 1) renderer.setDprScale(1);
+    }
   }
 
   if (builder.open) {
@@ -333,6 +380,9 @@ function resizeAll() {
 
 window.addEventListener('resize', resizeAll);
 resizeAll();
+applyLowFx(lowFx);
+ui.setCheat(builder.cheat, builder.build);
+if (builder.cheat) ui.setMode('sandbox');
 ui.updateBuildSummary(builder.build);
 ui.showMenu();
 net.connect();

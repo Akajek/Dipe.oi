@@ -12,9 +12,44 @@ export class UI {
     this.stats = new Array(8).fill(0);
     this.points = 0;
     this.chatOpen = false;
+    this.cheat = false;
     this.buildUpgrades();
     this.buildModes();
     this.bind();
+    this.bindSettings();
+  }
+
+  /** Select a mode programmatically (cheat mode forces Sandbox). */
+  setMode(mode) {
+    if (!GAME_MODES[mode]) return;
+    this.mode = mode;
+    localStorage.setItem('turretforge.mode', mode);
+    for (const n of el('modeRow').children) n.classList.toggle('active', n.dataset.mode === mode);
+  }
+
+  /** Cheat mode limits which modes are joinable; reflect that in the menu. */
+  setCheat(on, build) {
+    this.cheat = on;
+    if (build) this.updateBuildSummary(build);
+    for (const n of el('modeRow').children) {
+      const locked = on && n.dataset.mode !== 'sandbox';
+      n.classList.toggle('locked', locked);
+      n.title = locked ? 'Cheat builds only run in Sandbox' : '';
+    }
+  }
+
+  bindSettings() {
+    const low = el('lowFx');
+    low.checked = localStorage.getItem('turretforge.lowfx') === '1';
+    low.addEventListener('change', () => this.hooks.onLowFx(low.checked));
+
+    const snd = el('sfxToggle');
+    snd.checked = localStorage.getItem('turretforge.sfx') !== '0';
+    snd.addEventListener('change', () => this.hooks.onSfx(snd.checked));
+
+    const vol = el('volume');
+    vol.value = String(Number(localStorage.getItem('turretforge.volume') || 0.7));
+    vol.addEventListener('input', () => this.hooks.onVolume(Number(vol.value)));
   }
 
   // -------------------------------------------------------------------- menu
@@ -31,12 +66,15 @@ export class UI {
       const s = document.createElement('small');
       s.textContent = m.id === 'ffa' ? 'Everyone for themselves'
         : m.id === 'tdm' ? 'Blue versus red'
-        : 'One player is the boss';
+        : m.id === 'boss' ? 'One player is the boss'
+        : 'Cheat builds allowed';
       d.appendChild(b); d.appendChild(s);
       d.addEventListener('click', () => {
-        this.mode = m.id;
-        localStorage.setItem('turretforge.mode', m.id);
-        for (const n of row.children) n.classList.toggle('active', n.dataset.mode === m.id);
+        if (this.cheat && m.id !== 'sandbox') {
+          this.toast('Turn off cheat mode to play ' + m.name, 'bad');
+          return;
+        }
+        this.setMode(m.id);
       });
       row.appendChild(d);
     }
@@ -101,10 +139,16 @@ export class UI {
 
   updateBuildSummary(build) {
     const cost = buildCost(build);
-    const over = cost > BUDGET + 0.5;
+    // In cheat mode the budget is not a rule, so do not nag about it -- say
+    // what it actually means for where you can play instead.
+    const over = !this.cheat && cost > BUDGET + 0.5;
     const box = el('buildSummary');
     box.innerHTML = '';
     box.classList.toggle('over', over);
+    box.classList.toggle('cheat', this.cheat);
+
+    const turretText = build.turrets.length + ' turret' + (build.turrets.length === 1 ? '' : 's')
+      + ' · ' + build.body + ' hull';
 
     const left = document.createElement('div');
     const nm = document.createElement('div');
@@ -112,14 +156,14 @@ export class UI {
     nm.textContent = build.name || 'Custom';
     const meta = document.createElement('div');
     meta.className = 'bCost';
-    meta.textContent = over
-      ? 'Over budget — open the Forge to trim it'
-      : build.turrets.length + ' turret' + (build.turrets.length === 1 ? '' : 's') + ' · ' + build.body + ' hull';
+    meta.textContent = this.cheat ? turretText + ' · Sandbox only'
+      : over ? 'Over budget — open the Forge to trim it'
+      : turretText;
     left.appendChild(nm); left.appendChild(meta);
 
     const right = document.createElement('div');
     right.className = 'bCost';
-    right.textContent = cost.toFixed(0) + ' / ' + BUDGET + ' pts';
+    right.textContent = this.cheat ? cost.toFixed(0) + ' pts · unlimited' : cost.toFixed(0) + ' / ' + BUDGET + ' pts';
     box.appendChild(left); box.appendChild(right);
   }
 

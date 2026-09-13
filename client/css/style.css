@@ -92,7 +92,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .tagline { margin: 6px 0 22px; color: var(--muted); }
 #nameInput { width: 100%; text-align: center; font-size: 17px; margin-bottom: 16px; }
 
-.modeRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.modeRow { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
 .modeBtn {
   padding: 12px 6px; border-radius: var(--radius); cursor: pointer;
   background: #1b212b; border: 1px solid var(--line); text-align: center;
@@ -100,6 +100,9 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .modeBtn:hover { background: #232b37; }
 .modeBtn.active { border-color: var(--accent); background: rgba(0,178,225,.14); }
+.modeBtn.locked { opacity: .35; cursor: not-allowed; }
+.modeBtn.locked:hover { background: #1b212b; }
+.modeBtn[data-mode="sandbox"].active { border-color: #bf7ff5; background: rgba(191,127,245,.16); }
 .modeBtn b { display: block; font-size: 14px; }
 .modeBtn small { color: var(--muted); font-size: 11px; }
 
@@ -110,6 +113,8 @@ input:focus, select:focus { border-color: var(--accent); }
   font-size: 13px; text-align: left;
 }
 .buildSummary.over { border-color: rgba(241,78,84,.55); background: rgba(241,78,84,.08); }
+.buildSummary.cheat { border-color: rgba(191,127,245,.5); background: rgba(191,127,245,.09); }
+.buildSummary.cheat .bCost { color: #d6a8ff; }
 .buildSummary.over .bCost { color: #ff9a9e; }
 .buildSummary .bName { font-weight: 700; }
 .buildSummary .bCost { color: var(--muted); }
@@ -231,21 +236,56 @@ input:focus, select:focus { border-color: var(--accent); }
 .budgetTrack { flex: 1; height: 13px; background: #0d1014; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 #budgetFill { height: 100%; width: 0; background: linear-gradient(90deg, var(--good), var(--accent)); transition: width .18s ease, background .18s ease; }
 #budgetFill.over { background: linear-gradient(90deg, #f1a04e, var(--danger)); }
+#budgetFill.cheat { background: linear-gradient(90deg, #bf7ff5, #ff7ae0, #bf7ff5); }
+
+.badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
+  font-size: 10px; font-weight: 800; letter-spacing: .12em; vertical-align: middle;
+  background: linear-gradient(90deg, #bf7ff5, #ff7ae0); color: #1a0b22;
+}
+#forge.cheating .forgeBar { border-bottom-color: rgba(191,127,245,.5); }
+#forge.cheating #forgeCanvas { border-color: rgba(191,127,245,.4); }
+
+.tgl { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.tgl input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.tgl:hover { color: var(--text); }
+.forgeBarBtns { display: flex; align-items: center; gap: 16px; }
+
+.menuToggles {
+  display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 10px 12px;
+  background: #10141a; border: 1px solid var(--line); border-radius: var(--radius);
+}
+.menuToggles input[type=range] { width: 96px; accent-color: var(--accent); }
 #budgetText { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); min-width: 92px; }
 #budgetText.over { color: #ff9a9e; font-weight: 700; }
 
-.forgeBody { flex: 1; display: grid; grid-template-columns: 232px 1fr 316px; gap: 1px; background: var(--line); min-height: 0; }
+.forgeBody { flex: 1; display: grid; grid-template-columns: 300px 1fr 340px; gap: 1px; background: var(--line); min-height: 0; }
+@media (min-width: 1500px) { .forgeBody { grid-template-columns: 340px 1fr 380px; } }
 .forgeCol { background: var(--panel-solid); padding: 16px; overflow-y: auto; min-height: 0; }
 .forgeCol h3 { margin: 0 0 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.forgeCol.presets h3:not(:first-child) { margin-top: 18px; }
+.forgeCol.presets h3 {
+  position: sticky; top: -16px; z-index: 1;
+  padding: 6px 0; margin-bottom: 8px; background: var(--panel-solid);
+}
+.forgeCol.presets h3:not(:first-child) { margin-top: 16px; }
+
+/* Two-up so twice as many presets fit without scrolling. */
+#presetList, #savedList { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+@media (max-width: 1180px) { #presetList, #savedList { grid-template-columns: 1fr; } }
 
 .presetItem {
-  padding: 9px 11px; margin-bottom: 6px; border-radius: 8px; cursor: pointer;
+  padding: 7px 9px; border-radius: 8px; cursor: pointer;
   background: #1a1f28; border: 1px solid transparent;
+  min-width: 0;
 }
 .presetItem:hover { border-color: var(--line); background: #202734; }
-.presetItem b { display: block; font-size: 13px; }
-.presetItem small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.presetItem b { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Clamp the blurb to two lines; the full text is on the tooltip. */
+.presetItem small {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; color: var(--muted); font-size: 10.5px; line-height: 1.3;
+}
 .presetItem .del { float: right; color: var(--muted); cursor: pointer; padding: 0 4px; }
 .presetItem .del:hover { color: var(--danger); }
 
@@ -271,13 +311,22 @@ input:focus, select:focus { border-color: var(--accent); }
 .prop .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
 .prop .row b { font-weight: 600; }
 .prop .row i { font-style: normal; color: var(--accent); font-variant-numeric: tabular-nums; }
+.prop .propNum {
+  width: 86px; padding: 3px 7px; font-size: 12px; text-align: right;
+  color: var(--accent); background: #0d1014; border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.prop .propNum:focus { color: var(--text); border-color: var(--accent); }
+/* Keep the spinners; they make nudging a value by one painless. */
+.prop .propNum::-webkit-inner-spin-button { opacity: 1; }
 .prop input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
 .prop small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
 .segmented { display: flex; gap: 4px; }
 .segmented button { flex: 1; padding: 7px 4px; font-size: 11px; border-radius: 7px; }
 .segmented button.on { background: var(--accent); color: #06222c; border-color: transparent; }
 
-#deleteTurret { width: 100%; margin-top: 10px; }
+.turretOps { display: flex; gap: 6px; margin-bottom: 14px; }
+.turretOps button { flex: 1; padding: 8px 4px; font-size: 12px; }
 
 /* ------------------------------------------------------------------- death */
 

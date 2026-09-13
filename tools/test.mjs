@@ -5,9 +5,12 @@
 // friendly fire, build-budget enforcement, drone accounting and tick cost.
 
 import { Room } from '../server/room.js';
-import { STARTER_BUILDS, validateBuild, defaultTurret, BUDGET, MAX_TURRETS } from '../shared/builds.js';
+import {
+  STARTER_BUILDS, validateBuild, defaultTurret, BUDGET, MAX_TURRETS,
+  MAX_TURRETS_CHEAT, fieldRange,
+} from '../shared/builds.js';
 import { KEY, EF, readSnapshot } from '../shared/protocol.js';
-import { ENT, TEAM } from '../shared/constants.js';
+import { ENT, TEAM, MAX_PROJECTILES_PER_TANK, ROOM_ENTITY_CAP } from '../shared/constants.js';
 import { Shape } from '../server/entities.js';
 
 let passed = 0;
@@ -181,6 +184,72 @@ section('boss mode');
   check('killing the boss ends the round', room.roundState === 'waiting' && room.boss === null);
   const end = [...a.msgs, ...b.msgs].filter((m) => m.t === 'round' && m.state === 'end').pop();
   check('round end is announced', !!end, end ? end.message : 'no message');
+}
+
+section('cheat mode');
+{
+  const insane = {
+    name: 'APOCALYPSE', body: 'hexagon',
+    turrets: Array.from({ length: 200 }, () => defaultTurret({
+      damage: 1e9, reload: 0, count: 999, pen: Infinity, size: NaN, speed: 1e6, life: 1e9,
+    })),
+  };
+
+  const fair = validateBuild(insane);
+  check('cheat build is rejected in fair modes', !fair.ok);
+
+  const cheat = validateBuild(insane, { cheat: true });
+  check('cheat build is accepted with cheat on', cheat.ok);
+  check('cheat turret count is still capped', cheat.build.turrets.length === MAX_TURRETS_CHEAT,
+    String(cheat.build.turrets.length));
+
+  // The important one: no non-finite value may survive. A NaN position makes
+  // an entity that cannot be drawn, hit, or removed.
+  const allFinite = cheat.build.turrets.every((t) =>
+    Object.values(t).every((v) => typeof v !== 'number' || Number.isFinite(v)));
+  check('cheat values are all finite', allFinite);
+
+  check('cheat widens the ranges', fieldRange('damage', true).max > fieldRange('damage', false).max);
+  check('fair ranges are untouched', fieldRange('damage', false).max === 26);
+
+  // Turning cheat off must clamp an existing cheat build back to legal values.
+  const back = validateBuild(cheat.build, { cheat: false });
+  check('un-cheating clamps turrets to the fair cap', back.build.turrets.length <= MAX_TURRETS);
+  check('un-cheating clamps fields to fair ranges', back.build.turrets[0].damage <= 26);
+}
+
+section('sandbox mode');
+{
+  const room = emptyRoom('sandbox');
+  const cheatBuild = validateBuild({
+    name: 'BIG', body: 'hexagon',
+    turrets: Array.from({ length: 48 }, (_, i) => defaultTurret({
+      angle: -180 + i * 7, damage: 500, reload: 0.03, count: 24, speed: 40, pen: 50000, size: 6, life: 20,
+    })),
+  }, { cheat: true }).build;
+
+  const a = fakeClient('Cheater', cheatBuild);
+  const b = fakeClient('Bystander', STARTER_BUILDS[0].build);
+  room.join(a); room.join(b);
+  check('sandbox accepts a 48-turret build', a.tank.barrels.length === 48, String(a.tank.barrels.length));
+
+  let peakEntities = 0, worstTick = 0;
+  for (let i = 0; i < 200; i++) {
+    if (a.tank) a.tank.applyInput({ keys: KEY.AUTOFIRE | KEY.SHOOT, aimAngle: i * 0.05, aimDist: 600 });
+    const t0 = Date.now();
+    room.update();
+    worstTick = Math.max(worstTick, Date.now() - t0);
+    peakEntities = Math.max(peakEntities, room.entities.size);
+  }
+
+  check('per-tank projectile budget holds', !a.tank || a.tank.liveProjectiles <= MAX_PROJECTILES_PER_TANK,
+    a.tank ? String(a.tank.liveProjectiles) : 'dead');
+  check('room entity cap holds', peakEntities <= ROOM_ENTITY_CAP, String(peakEntities));
+  check('worst tick still inside budget', worstTick < 33, worstTick + ' ms');
+
+  // No NaN may leak into the world from an extreme build.
+  const bad = [...room.entities.values()].filter((e) => !Number.isFinite(e.x) || !Number.isFinite(e.y));
+  check('no entity ends up at a NaN position', bad.length === 0, String(bad.length));
 }
 
 section('snapshot flags');

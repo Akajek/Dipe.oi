@@ -10,6 +10,34 @@ export const BUDGET = 120;        // build points every player gets
 export const MAX_TURRETS = 10;
 export const MAX_BOSS_TURRETS = 16;
 
+// Cheat mode drops the points budget entirely, but not the safety rails: the
+// server still has to simulate whatever you build. These caps exist so one
+// creative build cannot take the process down for everyone else in the room.
+export const MAX_TURRETS_CHEAT = 48;
+export const MAX_COUNT_CHEAT = 24;
+
+/**
+ * Field bounds in cheat mode. Deliberately absurd, but finite -- Infinity or
+ * NaN anywhere in here becomes NaN positions, and a NaN tank is invisible,
+ * unhittable and impossible to remove.
+ */
+export const CHEAT_FIELDS = {
+  offset:  { min: -300, max: 300 },
+  forward: { min: -300, max: 300 },
+  angle:   { min: -180, max: 180 },
+  width:   { min: 1,    max: 200 },
+  length:  { min: 0,    max: 400 },
+  damage:  { min: 0,    max: 1000 },
+  reload:  { min: 0.03, max: 8 },
+  speed:   { min: 0,    max: 120 },
+  spread:  { min: 0,    max: 180 },
+  count:   { min: 1,    max: MAX_COUNT_CHEAT },
+  size:    { min: 0.1,  max: 12 },
+  pen:     { min: 0.1,  max: 100000 },
+  recoil:  { min: 0,    max: 60 },
+  life:    { min: 0.1,  max: 30 },
+};
+
 export const BODY_SHAPES = ['circle', 'square', 'triangle', 'pentagon', 'hexagon'];
 export const TURRET_SHAPES = ['rect', 'trap', 'trapInv', 'bulge'];
 export const TURRET_TYPES = ['bullet', 'drone', 'trap'];
@@ -71,20 +99,31 @@ export function buildCost(build) {
   return (build.turrets || []).reduce((s, t) => s + turretCost(t), 0);
 }
 
+/** Bounds for one field, honouring cheat mode. */
+export function fieldRange(key, cheat) {
+  const base = FIELDS[key];
+  if (!cheat) return base;
+  const c = CHEAT_FIELDS[key];
+  return c ? { min: c.min, max: c.max, step: base.step, def: base.def, label: base.label, help: base.help } : base;
+}
+
 /** Coerce one turret into a legal, fully-populated object. */
-export function sanitizeTurret(raw) {
+export function sanitizeTurret(raw, cheat = false) {
   const t = defaultTurret();
   if (!raw || typeof raw !== 'object') return t;
-  for (const [k, f] of Object.entries(FIELDS)) {
+  for (const k of Object.keys(FIELDS)) {
+    const f = fieldRange(k, cheat);
     const v = Number(raw[k]);
-    t[k] = Number.isFinite(v) ? clamp(v, f.min, f.max) : f.def;
+    // Non-finite values are the dangerous case: NaN propagates into positions
+    // and produces entities that can never be drawn or removed.
+    t[k] = Number.isFinite(v) ? clamp(v, f.min, f.max) : FIELDS[k].def;
   }
   t.shape = TURRET_SHAPES.includes(raw.shape) ? raw.shape : 'rect';
   t.type = TURRET_TYPES.includes(raw.type) ? raw.type : 'bullet';
   // Drones are persistent, so `count` means "max alive" and reload means
   // respawn delay. Keep swarms small enough to simulate and draw cheaply.
-  if (t.type === 'drone') t.count = clamp(Math.round(t.count), 1, 4);
-  else t.count = clamp(Math.round(t.count), 1, FIELDS.count.max);
+  const countMax = t.type === 'drone' ? (cheat ? 12 : 4) : fieldRange('count', cheat).max;
+  t.count = clamp(Math.round(t.count), 1, countMax);
   return t;
 }
 
@@ -95,24 +134,29 @@ export function sanitizeTurret(raw) {
  * @returns {{build: object, cost: number, ok: boolean, reason: string}}
  */
 export function validateBuild(raw, opts = {}) {
+  const cheat = !!opts.cheat;
   const budget = opts.budget === undefined ? BUDGET : opts.budget;
-  const maxTurrets = opts.maxTurrets === undefined ? MAX_TURRETS : opts.maxTurrets;
+  const maxTurrets = opts.maxTurrets === undefined
+    ? (cheat ? MAX_TURRETS_CHEAT : MAX_TURRETS)
+    : opts.maxTurrets;
 
   if (!raw || typeof raw !== 'object') {
     const fallback = STARTER_BUILDS[0].build;
     return { build: fallback, cost: buildCost(fallback), ok: false, reason: 'malformed build' };
   }
 
-  const out = { name: 'Custom', body: 'circle', turrets: [] };
+  const out = { name: 'Custom', body: 'circle', turrets: [], cheat };
   out.name = String(raw.name || 'Custom').slice(0, 20);
   out.body = BODY_SHAPES.includes(raw.body) ? raw.body : 'circle';
 
   const list = Array.isArray(raw.turrets) ? raw.turrets.slice(0, maxTurrets) : [];
-  out.turrets = list.map(sanitizeTurret);
+  out.turrets = list.map((t) => sanitizeTurret(t, cheat));
   if (out.turrets.length === 0) out.turrets = [defaultTurret()];
 
   const cost = buildCost(out);
-  if (cost > budget + 0.5) {
+  // Cheat builds skip the budget entirely; the turret and field caps above are
+  // what keep them simulable.
+  if (!cheat && cost > budget + 0.5) {
     return { build: out, cost, ok: false, reason: 'build costs ' + cost.toFixed(1) + ' of ' + budget + ' points' };
   }
   return { build: out, cost, ok: true, reason: '' };
@@ -176,6 +220,48 @@ export const STARTER_BUILDS = [
         T({ shape: 'trap', type: 'trap', width: 26, length: 30, damage: 9, reload: 0.7, speed: 10, pen: 12, life: 6, count: 2, spread: 12 }),
         T({ angle: 180, width: 16, length: 38, damage: 4, reload: 0.6, speed: 12, pen: 3 }),
       ],
+    },
+  },
+  {
+    id: 'machinegun', label: 'Machine Gun', desc: 'Fast, sloppy, relentless. Spread is a discount.',
+    build: {
+      name: 'Machine Gun', body: 'circle',
+      turrets: [T({ shape: 'bulge', width: 24, length: 44, damage: 3, reload: 0.16, speed: 15, spread: 14, pen: 2.5, life: 1.4, recoil: 1.5 })],
+    },
+  },
+  {
+    id: 'hexa', label: 'Hexa', desc: 'Six barrels, all directions. Auto-spin optional.',
+    build: {
+      name: 'Hexa', body: 'hexagon',
+      turrets: [0, 60, 120, 180, -120, -60].map((a) => T({ angle: a, width: 14, length: 36, damage: 3.5, reload: 0.55, speed: 12, pen: 3 })),
+    },
+  },
+  {
+    id: 'booster', label: 'Booster', desc: 'Rear thrusters. Recoil is the point.',
+    build: {
+      name: 'Booster', body: 'triangle',
+      turrets: [
+        T({ damage: 7, reload: 0.5, speed: 15, pen: 5 }),
+        T({ angle: 150, shape: 'trap', width: 26, length: 34, damage: 2, reload: 0.3, speed: 9, pen: 1, life: 0.6, recoil: 6 }),
+        T({ angle: -150, shape: 'trap', width: 26, length: 34, damage: 2, reload: 0.3, speed: 9, pen: 1, life: 0.6, recoil: 6 }),
+      ],
+    },
+  },
+  {
+    id: 'minefield', label: 'Minefield', desc: 'Trap ring. Own the ground you stand on.',
+    build: {
+      name: 'Minefield', body: 'pentagon',
+      turrets: [0, 90, 180, -90].map((a) => T({
+        angle: a, shape: 'trap', type: 'trap', width: 22, length: 28,
+        damage: 6, reload: 0.9, speed: 9, pen: 9, life: 5, spread: 10,
+      })),
+    },
+  },
+  {
+    id: 'assassin', label: 'Assassin', desc: 'One shot, enormous range. Miss and you are dead.',
+    build: {
+      name: 'Assassin', body: 'circle',
+      turrets: [T({ width: 18, length: 75, damage: 26, reload: 2.1, speed: 22, pen: 11, life: 5, recoil: 4 })],
     },
   },
   {

@@ -23,6 +23,11 @@ export class Net {
     this.bytesIn = 0;
     this.lastSeq = 0;
     this.pingTimer = null;
+    // Interpolation writes into recycled objects. Allocating a few hundred
+    // fresh ones every frame is enough GC churn to cause visible hitches on
+    // slower machines.
+    this.viewPool = [];
+    this.viewOut = [];
   }
 
   connect() {
@@ -146,7 +151,9 @@ export class Net {
     const span = s1.recv - s0.recv;
     const t = span > 0 ? Math.max(0, Math.min(1, (target - s0.recv) / span)) : 1;
 
-    const out = [];
+    const out = this.viewOut;
+    out.length = 0;
+    let slot = 0;
     for (const b of s1.ents) {
       const a = s0.map.get(b.id);
       if (!a) {
@@ -154,22 +161,24 @@ export class Net {
         out.push(b);
         continue;
       }
-      out.push({
-        id: b.id,
-        type: b.type,
-        flags: b.flags,
-        x: lerp(a.x, b.x, t),
-        y: lerp(a.y, b.y, t),
-        angle: lerpAngle(a.angle, b.angle, t),
-        radius: lerp(a.radius, b.radius, t),
-        team: b.team,
-        hpRatio: lerp(a.hpRatio, b.hpRatio, t),
-        styleId: b.styleId,
-        aux: b.aux,
-        // Velocity estimate, handy for motion-blur style trails.
-        vx: span > 0 ? (b.x - a.x) / span : 0,
-        vy: span > 0 ? (b.y - a.y) / span : 0,
-      });
+      let o = this.viewPool[slot];
+      if (!o) { o = {}; this.viewPool[slot] = o; }
+      slot++;
+      o.id = b.id;
+      o.type = b.type;
+      o.flags = b.flags;
+      o.x = lerp(a.x, b.x, t);
+      o.y = lerp(a.y, b.y, t);
+      o.angle = lerpAngle(a.angle, b.angle, t);
+      o.radius = lerp(a.radius, b.radius, t);
+      o.team = b.team;
+      o.hpRatio = lerp(a.hpRatio, b.hpRatio, t);
+      o.styleId = b.styleId;
+      o.aux = b.aux;
+      // Velocity estimate, used for motion-streak trails.
+      o.vx = span > 0 ? (b.x - a.x) / span : 0;
+      o.vy = span > 0 ? (b.y - a.y) / span : 0;
+      out.push(o);
     }
 
     const latest = this.snapshots[n - 1];

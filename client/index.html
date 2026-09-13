@@ -67,6 +67,12 @@
 
     <div class="buildSummary" id="buildSummary"></div>
 
+    <div class="menuToggles">
+      <label class="tgl" title="Fewer effects and a lower render resolution. Try this first if the game stutters."><input type="checkbox" id="lowFx" /> <span>Low graphics</span></label>
+      <label class="tgl"><input type="checkbox" id="sfxToggle" checked /> <span>Sound</span></label>
+      <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7" title="Volume" />
+    </div>
+
     <div class="menuButtons">
       <button id="playBtn" class="primary">Play</button>
       <button id="forgeBtn">Open the Forge</button>
@@ -83,12 +89,15 @@
 <!-- ----------------------------------------------------------------- forge -->
 <div id="forge" class="hidden">
   <div class="forgeBar">
-    <h2>The Forge</h2>
+    <h2>The Forge <span id="cheatBadge" class="badge hidden">CHEAT</span></h2>
     <div class="budget">
       <div class="budgetTrack"><div id="budgetFill"></div></div>
       <span id="budgetText">0 / 120</span>
     </div>
     <div class="forgeBarBtns">
+      <label class="tgl" title="Removes the points budget and unlocks every slider. Cheat builds only work in Sandbox.">
+        <input type="checkbox" id="cheatToggle" /> <span>Cheat mode</span>
+      </label>
       <button id="forgeSave" class="primary">Save &amp; Close</button>
     </div>
   </div>
@@ -122,8 +131,12 @@
         <button id="addTurret" class="ghost">+ Add</button>
       </div>
       <div id="turretTabs"></div>
+      <div class="turretOps">
+        <button id="dupTurret" class="ghost" title="Copy this turret">Duplicate</button>
+        <button id="mirrorTurret" class="ghost" title="Add a mirrored copy across the centre line">Mirror</button>
+        <button id="deleteTurret" class="danger" title="Remove this turret">Delete</button>
+      </div>
       <div id="turretProps"></div>
-      <button id="deleteTurret" class="danger">Delete turret</button>
     </aside>
   </div>
 </div>

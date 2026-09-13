@@ -5,6 +5,7 @@ import { TAU, clamp, randRange } from '../shared/math.js';
 import {
   TICK_RATE, WORLD_SIZE, ENT, PROJ, SHAPE_DEFS, STAT_COUNT, STAT_MAX,
   MAX_LEVEL, TEAM, FRICTION, BASE_ACCEL, TANK_BASE_RADIUS, FX,
+  MAX_PROJECTILES_PER_TANK, ROOM_ENTITY_CAP,
 } from '../shared/constants.js';
 import { KEY, EF } from '../shared/protocol.js';
 
@@ -244,9 +245,12 @@ export class Projectile extends Entity {
    * so a barrel's drone budget is always returned exactly once.
    */
   onRemove() {
-    if (this.kind === PROJ.DRONE && this.owner && this.owner.droneCount) {
+    const o = this.owner;
+    if (!o) return;
+    if (o.liveProjectiles !== undefined) o.liveProjectiles = Math.max(0, o.liveProjectiles - 1);
+    if (this.kind === PROJ.DRONE && o.droneCount) {
       const i = this.barrelIdx;
-      this.owner.droneCount[i] = Math.max(0, (this.owner.droneCount[i] || 1) - 1);
+      o.droneCount[i] = Math.max(0, (o.droneCount[i] || 1) - 1);
     }
   }
 }
@@ -281,6 +285,7 @@ export class Tank extends Entity {
     this.invuln = TICK_RATE * 2;   // spawn protection
     this.regenDelay = 0;
     this.droneCount = [];
+    this.liveProjectiles = 0;      // budget enforced in fireBarrels
     this.setBuild(build);
     this.recompute();
     this.hp = this.maxHp;
@@ -440,7 +445,14 @@ export class Tank extends Entity {
       b.timer = reloadTicks;
       b.flash = 4;
 
-      const shots = isDrone ? 1 : b.count;
+      // Clamp the volley to what the tank and the room can still afford. This
+      // is what makes a 48-barrel cheat build merely silly rather than fatal.
+      const tankBudget = MAX_PROJECTILES_PER_TANK - this.liveProjectiles;
+      const roomBudget = ROOM_ENTITY_CAP - room.entities.size;
+      const affordable = Math.min(tankBudget, roomBudget);
+      if (affordable <= 0) continue;
+
+      const shots = Math.min(isDrone ? 1 : b.count, affordable);
       const m = this.barrelMuzzle(b);
       for (let s = 0; s < shots; s++) {
         const jitter = b.spread ? randRange(-b.spread / 2, b.spread / 2) : 0;
@@ -449,6 +461,7 @@ export class Tank extends Entity {
         p.r *= m.scale;
         p.barrelIdx = i;
         room.add(p);
+        this.liveProjectiles++;
         if (isDrone) this.droneCount[i] = (this.droneCount[i] || 0) + 1;
       }
 

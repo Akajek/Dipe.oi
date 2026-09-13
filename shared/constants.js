@@ -69,6 +69,9 @@ export const GAME_MODES = {
   ffa:  { id: 'ffa',  name: 'Free For All', teams: 0, maxPlayers: 40 },
   tdm:  { id: 'tdm',  name: 'Team Deathmatch', teams: 2, maxPlayers: 40 },
   boss: { id: 'boss', name: 'Boss Fight', teams: 0, maxPlayers: 30 },
+  // Cheat builds are accepted here and nowhere else, so the competitive modes
+  // stay honest while you still get somewhere to fire a 48-barrel monstrosity.
+  sandbox: { id: 'sandbox', name: 'Sandbox', teams: 0, maxPlayers: 12, cheat: true },
 };
 
 // Server -> client VFX event kinds. The server decides when these happen so
@@ -92,3 +95,9 @@ export const BASE_ACCEL = 1.35;
 export const TANK_BASE_RADIUS = 24;
 
 export const MAX_NAME_LEN = 16;
+
+// Simulation safety rails. Cheat builds are allowed to be absurd on paper, but
+// the server still has to tick whatever they produce, so firing is throttled
+// against these budgets rather than against the build's own numbers.
+export const MAX_PROJECTILES_PER_TANK = 340;
+export const ROOM_ENTITY_CAP = 3600;

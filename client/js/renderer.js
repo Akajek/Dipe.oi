@@ -7,6 +7,7 @@ import {
 } from '../../shared/constants.js';
 import { EF } from '../../shared/protocol.js';
 import { PK } from './vfx.js';
+import { glowSprite, calibrateGlow } from './sprites.js';
 
 const BARREL_FILL = '#999999';
 const BARREL_LINE = '#727272';
@@ -34,21 +35,36 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.vfx = vfx;
     this.dpr = 1;
+    this.dprScale = 1;
     this.w = 0; this.h = 0;
+    this.vignette = null;
+    this.lowFx = false;
+    // Whichever soft-glow path is actually faster on this machine.
+    this.glowMode = calibrateGlow();
     this.zoom = 1;
     this.camX = WORLD_SIZE / 2;
     this.camY = WORLD_SIZE / 2;
   }
 
   resize() {
-    // Cap DPR: 4K at 2x costs far more than it looks better here.
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Every DPR step squares the pixels we have to fill. 1.5 is the point
+    // where the extra sharpness stops being worth it; `dprScale` lets the
+    // auto-quality logic drop us to 1.0 on machines that are struggling.
+    this.dpr = Math.min(window.devicePixelRatio || 1, 1.5) * this.dprScale;
     this.w = window.innerWidth;
     this.h = window.innerHeight;
     this.canvas.width = Math.round(this.w * this.dpr);
     this.canvas.height = Math.round(this.h * this.dpr);
     this.canvas.style.width = this.w + 'px';
     this.canvas.style.height = this.h + 'px';
+    this.vignette = null;   // depends on viewport size; rebuilt on next draw
+  }
+
+  /** Called by the auto-quality logic when the frame rate is struggling. */
+  setDprScale(scale) {
+    if (scale === this.dprScale) return;
+    this.dprScale = scale;
+    this.resize();
   }
 
   /** World units visible across the viewport at the current zoom. */
@@ -127,6 +143,29 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(0,0,0,0.45)';
     ctx.lineWidth = 6 / this.zoom;
     ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+  }
+
+  /**
+   * Soft radial glow, drawn the faster way for this machine. Skipped entirely
+   * in low-graphics mode, where large alpha blends are the thing to cut first.
+   */
+  glow(x, y, r, color, alpha) {
+    if (this.lowFx || r <= 0) return;
+    const ctx = this.ctx;
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = prev * alpha;
+    if (this.glowMode === 'sprite') {
+      ctx.drawImage(glowSprite(color), x - r, y - r, r * 2, r * 2);
+    } else {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = prev;
   }
 
   // --------------------------------------------------------------- primitives
@@ -242,18 +281,18 @@ export class Renderer {
     }
 
     // Bullets get a short motion streak so fast shots read as fast.
-    if (e.vx !== undefined && (Math.abs(e.vx) > 0.02 || Math.abs(e.vy) > 0.02)) {
+    if (!this.lowFx && e.vx !== undefined && (Math.abs(e.vx) > 0.02 || Math.abs(e.vy) > 0.02)) {
       const sp = Math.hypot(e.vx, e.vy);
       const tail = clamp(sp * 6, 0, e.radius * 5);
       if (tail > 3) {
         const nx = e.vx / sp, ny = e.vy / sp;
-        const g = ctx.createLinearGradient(e.x, e.y, e.x - nx * tail, e.y - ny * tail);
-        g.addColorStop(0, color);
-        g.addColorStop(1, 'rgba(0,0,0,0)');
+        // A flat translucent stroke instead of a per-frame gradient. At this
+        // size the taper was never visible, and this is an order of magnitude
+        // cheaper when canvas is software-rasterised.
         ctx.save();
-        ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = g;
-        ctx.lineWidth = e.radius * 1.5;
+        ctx.globalAlpha = 0.32;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = e.radius * 1.4;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(e.x, e.y);
@@ -287,13 +326,8 @@ export class Renderer {
     if (boss) {
       // Menacing aura so the boss reads instantly at any zoom.
       const pulse = 1 + Math.sin(performance.now() / 220) * 0.06;
-      const g = ctx.createRadialGradient(e.x, e.y, e.radius * 0.8, e.x, e.y, e.radius * 2.1 * pulse);
-      g.addColorStop(0, 'rgba(232,163,61,0.32)');
-      g.addColorStop(1, 'rgba(232,163,61,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius * 2.1 * pulse, 0, TAU);
-      ctx.fill();
+      const aura = e.radius * 2.1 * pulse;
+      this.glow(e.x, e.y, aura, '#e8a33d', 0.34);
     }
 
     // Barrels sit under the hull.
@@ -382,11 +416,7 @@ export class Renderer {
           break;
 
         case PK.P_PUFF:
-          ctx.globalAlpha = a * 0.42;
-          ctx.fillStyle = p.color;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, Math.max(0.5, p.size), 0, TAU);
-          ctx.fill();
+          this.glow(p.x, p.y, Math.max(0.5, p.size), p.color, a * 0.42);
           break;
 
         case PK.P_SHARD: {
@@ -409,18 +439,9 @@ export class Renderer {
           ctx.stroke();
           break;
 
-        case PK.P_FLASH: {
-          const r = Math.max(0.5, p.size);
-          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-          g.addColorStop(0, p.color);
-          g.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.globalAlpha = a * 0.75;
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r, 0, TAU);
-          ctx.fill();
+        case PK.P_FLASH:
+          this.glow(p.x, p.y, Math.max(0.5, p.size), p.color, a * 0.75);
           break;
-        }
 
         case PK.P_CONE: {
           ctx.globalAlpha = a * 0.85;
@@ -465,14 +486,18 @@ export class Renderer {
       ctx.fillRect(0, 0, this.w, this.h);
       ctx.restore();
     }
-    // Vignette.
-    const g = ctx.createRadialGradient(
-      this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.42,
-      this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.78
-    );
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.34)');
-    ctx.fillStyle = g;
+    // Vignette. A full-screen alpha blend every frame, which is cheap on a GPU
+    // and expensive in software -- so low-graphics mode goes without.
+    if (this.lowFx) return;
+    if (!this.vignette) {
+      this.vignette = ctx.createRadialGradient(
+        this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.42,
+        this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.78
+      );
+      this.vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      this.vignette.addColorStop(1, 'rgba(0,0,0,0.34)');
+    }
+    ctx.fillStyle = this.vignette;
     ctx.fillRect(0, 0, this.w, this.h);
   }
 }

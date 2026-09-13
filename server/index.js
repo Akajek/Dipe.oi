@@ -114,8 +114,9 @@ class Client {
  * individually legal but wildly over budget together, so a failed check must
  * discard the build outright rather than use the clamped version.
  */
-function acceptBuild(client, raw) {
-  const check = validateBuild(raw);
+function acceptBuild(client, raw, mode) {
+  const def = GAME_MODES[mode] || GAME_MODES.ffa;
+  const check = validateBuild(raw, { cheat: !!def.cheat });
   if (check.ok) return check.build;
   client.error('Build rejected (' + check.reason + '); using the starter build.');
   return structuredClone(STARTER_BUILDS[0].build);
@@ -200,9 +201,10 @@ function handleText(client, data) {
     case 'join': {
       if (client.joined && client.room) { client.error('Already in a game.'); return; }
       client.name = sanitizeName(msg.name);
-      client.build = acceptBuild(client, msg.build);
+      const mode = GAME_MODES[msg.mode] ? msg.mode : 'ffa';
+      client.build = acceptBuild(client, msg.build, mode);
       if (msg.view) client.setView(msg.view.w, msg.view.h);
-      const room = getRoom(msg.mode);
+      const room = getRoom(mode);
       room.join(client);
       client.joined = true;
       console.log('[net] ' + client.name + ' joined ' + room.id);
@@ -212,7 +214,7 @@ function handleText(client, data) {
     case 'respawn': {
       if (!client.room) return;
       if (client.tank && !client.tank.dead) return;
-      if (msg.build) client.build = acceptBuild(client, msg.build);
+      if (msg.build) client.build = acceptBuild(client, msg.build, client.room.mode);
       // The boss slot is round-controlled; never self-respawn into it.
       if (client.room.mode === 'boss' && client.room.bossClient === client) return;
       client.room.spawnTank(client);
@@ -220,7 +222,9 @@ function handleText(client, data) {
     }
 
     case 'setBuild': {
-      const check = validateBuild(msg.build);
+      const mode = client.room ? client.room.mode : 'ffa';
+      const def = GAME_MODES[mode] || GAME_MODES.ffa;
+      const check = validateBuild(msg.build, { cheat: !!def.cheat });
       if (!check.ok) { client.error('Build rejected: ' + check.reason); return; }
       client.build = check.build;
       client.sendJSON({ t: 'buildOk', cost: check.cost });

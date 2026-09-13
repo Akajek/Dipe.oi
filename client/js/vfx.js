@@ -39,9 +39,13 @@ export class VFX {
     this.flashAlpha = 0;
     this.flashColor = '#fff';
     this.quality = 1;    // scales particle counts; dropped automatically if slow
+    this.maxAlive = MAX_PARTICLES;
   }
 
   spawn(kind, x, y) {
+    // Two ceilings: the pool itself, and a lower live cap that low-graphics
+    // mode tightens so a big fight cannot flood a weak machine.
+    if (this.active.length >= this.maxAlive) return null;
     const p = this.pool.pop();
     if (!p) return null;               // pool exhausted; drop the effect
     this.active.push(p.init(kind, x, y));
