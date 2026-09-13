@@ -1,0 +1,6 @@
+# Normalise to LF in the repo. The server runs on Linux (Render); shipping
+# CRLF would break shell steps in CI.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
